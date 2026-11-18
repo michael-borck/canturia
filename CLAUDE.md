@@ -13,8 +13,11 @@ shell. PyPI package and CLI: `canturia`.
 
 - Python core, ACE-Step client, CLI, web UI, password gate, tests — done and
   verified live against `http://192.168.20.120:8002` (lyrics mode).
-- Tauri shell, icons, `cargo check`, CI workflows — in the repo. No PyPI
-  release yet, so the desktop sidecar needs `CANTURIA_DEV_PATH` for dev.
+- Published on PyPI as `canturia` 0.1.0. Install with
+  `pip install "canturia[serve]"`.
+- Tauri shell, icons, `cargo check`, CI workflows — in the repo. The sidecar
+  installs `canturia[serve]==0.1.0` from PyPI; use `CANTURIA_DEV_PATH` for
+  editable local source.
 - **Describe mode is untested live** because the server currently reports
   `llm_initialized: false`. It uses `sample_mode`/`sample_query`; enable the
   server's LM (`resident: true` in `puente.yml`) to use it.
@@ -56,8 +59,8 @@ uv run --no-sync canturia "[Verse]\nMorning light" -g folk -t 10 -o /tmp/x.mp3 \
   (`UV_PROJECT_ENVIRONMENT`), and delete AppleDouble `._*` files before Tauri
   builds. `desktop/src-tauri/build.rs` clears them from `capabilities/` and
   `icons/` automatically.
-- Tauri dev needs `CANTURIA_DEV_PATH` until `canturia` is on PyPI; otherwise it
-  tries `canturia[serve]==0.1.0`.
+- Tauri dev installs `canturia[serve]==0.1.0` from PyPI. Set
+  `CANTURIA_DEV_PATH` to use the local source instead.
 
 ## Decisions
 

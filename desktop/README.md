@@ -20,18 +20,17 @@ generation request to the server the user configures.
 
 ## Develop
 
-Until `canturia` is on PyPI, install the local source into the sidecar runtime:
-
 ```bash
-export CANTURIA_DEV_PATH="/Volumes/Crucial X9/Projects/song-gen"
 cargo install tauri-cli --locked
 cd desktop
 cargo tauri dev
 ```
 
-The first run downloads `uv` if needed, then installs the editable package.
-Delete the app-data `runtime/canturia-version` marker (or pass `update: true`)
-to force a reinstall after Python changes.
+The sidecar installs `canturia[serve]==0.1.0` from PyPI. To use the local source
+instead, set `CANTURIA_DEV_PATH="/Volumes/Crucial X9/Projects/song-gen"`; the
+first run downloads `uv` if needed, then installs the editable package. Delete
+the app-data `runtime/canturia-version` marker to force a reinstall after
+Python changes.
 
 On this repo's exFAT drive, set `CARGO_TARGET_DIR` to an internal disk.
 

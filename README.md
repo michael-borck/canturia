@@ -126,10 +126,13 @@ with `uv`, runs `canturia serve` on a random localhost port, and shows the web
 UI in the window. Settings writes `~/.canturia.yaml`.
 
 ```bash
-export CANTURIA_DEV_PATH="$PWD"   # until the first PyPI release
 cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
+
+The sidecar installs `canturia[serve]==0.1.0` from PyPI. For local Python
+changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
+instead.
 
 ## Why Python, and why Tauri
 
@@ -157,7 +160,7 @@ uv run --no-sync pytest
 - **M1** — Python core, CLI, web UI (done).
 - **M2** — Tauri desktop shell with a Settings sheet for the server URL and
   credentials, uv-bootstrapped sidecar, installers in CI (shell and CI in this
-  repo; the sidecar installs from PyPI once `canturia` is published).
+  repo; the sidecar installs `canturia[serve]==0.1.0` from PyPI).
 - **M3** — Optional advanced controls, documented but hidden by default: BPM,
   key, time signature, instrumental, vocal language, LoRA selection.
 
