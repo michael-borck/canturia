@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# AppleDouble files on exFAT
+._*
+
+# Local config and output
+canturia.yaml
+.canturia.yaml
+songs/
+output/
+*.mp3.tmp
+
+# Tauri / Rust
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+
+# OS
+.DS_Store

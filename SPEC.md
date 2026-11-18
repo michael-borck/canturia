@@ -1,0 +1,266 @@
+# Canturía — specification
+
+> *canturía (Spanish): the act or manner of singing; a song's way of being sung.*
+
+A small, privacy-first tool that turns words into a song. Paste lyrics or
+describe a topic, choose a genre and a length, get audio. No account, no
+telemetry, bring your own ACE-Step server.
+
+---
+
+## 1. Vision
+
+Most music tools are either a locked-in web service or a full DAW. Canturía sits
+in between: the simplest possible "words → song" surface, that you own.
+
+- **Two ways in.** Paste lyrics (works on a lean server), or describe a topic
+  and let the server write the lyrics (needs its language model).
+- **Minimal by design.** Genre, length, and optional style details. Nothing
+  else in the main flow.
+- **Bring your own server.** Point Canturía at an ACE-Step 1.5 API on your LAN
+  or behind your own proxy. Swap the URL with one setting.
+- **Private by default.** No account, no telemetry, no server-side storage of
+  prompts or audio. The desktop app is fully local apart from the request to
+  *your* server; the web UI keeps the session gallery in memory and only writes
+  a file when you press Save.
+
+## 2. Principles
+
+1. **Simple beats powerful.** One screen, two modes, one Generate button.
+2. **Local-first.** Session gallery in memory; Save is explicit.
+3. **Provider-shaped, not provider-locked.** The ACE-Step client is one thin
+   module; the core does not depend on a UI.
+4. **Progressive surfaces.** The same core powers a CLI, a web UI, and a
+   desktop app. Each is optional.
+5. **Fail visibly.** No silent fallback when the server's lyrics writer is off
+   or the request fails.
+
+## 3. Surfaces
+
+### v1 — CLI
+
+```bash
+canturia "[Verse]\nMorning light...\n[Chorus]\nGrow a little every day" -g folk -t 30
+canturia describe "a warm song about growing up by the sea" -g folk -t 45
+canturia health
+canturia serve
+```
+
+Options: `--lyrics-file`, `--genre`, `--style`, `--duration`, `--out`,
+`--config`, `--base-url`, `--api-key`, `--username`, `--password`,
+`--timeout`, `--init-config`.
+
+### v2 — Web UI (`canturia serve`)
+
+A single page:
+
+- **Lyrics** and **Describe** tabs.
+- Genre chips (folk, pop, rock, indie, lo-fi, electronic, hip-hop, soul,
+  country, jazz, classical, ambient, metal, lullaby) plus optional free-text
+  style details.
+- Length presets 30/60/90/120 s plus a custom 10–600 s field.
+- Generate → a pending card with the server's progress text → an audio card.
+- Audio player, Save, Download, Again, Delete.
+- Server pill showing the loaded model and whether the lyrics writer is on.
+- In-memory session gallery (max 50 songs) and JSON sidecars on Save.
+
+FastAPI + a self-contained HTML page (no CDNs). Binds `127.0.0.1` by default;
+an optional shared password gates hosted instances.
+
+### v3 — Desktop (Tauri + Python sidecar)
+
+A native, installable app. Tauri v2 uses the OS webview (no bundled browser
+engine). On first launch it bootstraps a private runtime with `uv`, creates a
+venv in the app-data directory, installs `canturia[serve]==<pin>`, runs
+`canturia serve` on a random localhost port, and shows the served UI. Settings
+writes `~/.canturia.yaml` (merge-preserving, chmod 600), the same file the CLI
+uses. Saves land in `~/Music/Canturia`. Distributed as a signed installer; not
+on the Mac App Store (runtime-download rules).
+
+## 4. Input modes
+
+| Mode | Input | ACE-Step request | LM required |
+|---|---|---|---|
+| `lyrics` | Lyrics with `[Verse]` / `[Chorus]` tags | `prompt` + `lyrics` + `audio_duration` + `batch_size: 1` | No |
+| `describe` | Topic / theme / sentence | `sample_mode: true` + `sample_query` + `prompt` + `audio_duration` + `batch_size: 1` | Yes |
+
+`prompt` is built from the genre preset plus optional style details, e.g.
+`gentle acoustic folk, warm vocals, fingerpicked guitar, close mic`.
+
+The web UI reads `/health` and disables Describe when `llm_initialized` is
+false, with an explanation pointing at `resident: true` in `puente.yml`.
+The CLI lets the request through and surfaces the server's error.
+
+Durations are validated in the client at 10–600 seconds, matching ACE-Step.
+`batch_size` is always 1; "Again" creates another take.
+
+## 5. ACE-Step API contract
+
+Verified against the live service and the upstream OpenAPI/source at commit
+`ca1e85fe`. The API is LAN-only and unauthenticated today; the client supports
+the auth it exposes for the move behind a proxy.
+
+### Envelope
+
+Every endpoint returns:
+
+```json
+{"data": ..., "code": 200, "error": null, "timestamp": 1795042169917}
+```
+
+A non-200 `code` is an error. `data` is the useful payload.
+
+### Submit
+
+```http
+POST /release_task
+Content-Type: application/json
+
+{
+  "prompt": "gentle acoustic folk, warm female vocals, fingerpicked guitar",
+  "lyrics": "[Verse]\nMorning light...\n[Chorus]\nGrow a little every day",
+  "audio_duration": 30,
+  "batch_size": 1
+}
+```
+
+Returns `data.task_id` (also `status`, `queue_position`). The first cold request
+may download ~8 GB of weights; it queues rather than failing.
+
+### Poll
+
+```http
+POST /query_result
+Content-Type: application/json
+
+{"task_id_list": ["<task_id>"]}
+```
+
+Returns `data` as a list. Each item has `task_id`, `status`
+(`0` running, `1` done, `2` failed), `progress_text`, and `result`.
+
+**Gotcha:** `result` is a JSON *string*. Decode it again to get a list of
+result objects. When done, each object has `file` (a server-side path),
+`prompt`, `lyrics`, and `metas` (`bpm`, `duration`, `genres`, `keyscale`,
+`timesignature`). When failed, the object carries `error`.
+
+### Download
+
+```http
+GET /v1/audio?path=%2Fapp%2Foutputs%2F...
+```
+
+The `path` query parameter must be URL-encoded; pass the decoded server path
+through the HTTP client's params and let it encode. The response is audio bytes.
+
+### Auth
+
+`/release_task` and `/query_result` accept an `ai_token` body field or
+`Authorization: Bearer <token>`. `/v1/audio` and `/v1/models` accept the
+`Authorization` header. A reverse proxy can use HTTP Basic instead. Canturía
+supports Bearer (`api_key`) and Basic (`username` + `password`).
+
+## 6. Auth model
+
+- **Upstream:** optional Bearer or Basic, stored in `~/.canturia.yaml` or
+  environment variables. Never exposed to the browser.
+- **App:** an optional shared password for `canturia serve`. A successful login
+  sets an HttpOnly, SameSite=Strict session cookie backed by an in-memory
+  session table. When binding beyond localhost without a password, `serve`
+  generates one and prints it. Localhost needs no password by default.
+- **Desktop:** the sidecar binds `127.0.0.1` with no app password; the Settings
+  sheet stores the upstream URL/credentials.
+
+## 7. Config
+
+Layered, later wins:
+
+1. Built-in defaults.
+2. `~/.canturia.yaml`.
+3. `./canturia.yaml` (or `--config FILE`).
+4. CLI flags / environment.
+
+```yaml
+base_url: http://192.168.20.120:8002
+api_key: "${ACESTEP_API_KEY}"        # optional Bearer
+username: admin                      # optional Basic
+password: "${ACESTEP_PASSWORD}"
+timeout: 900
+request_timeout: 60
+poll_interval: 2
+genre: folk
+style: ""
+duration: 30
+serve:
+  host: 127.0.0.1
+  port: 2268
+  password: "${CANTURIA_SERVE_PASSWORD}"
+  out_dir: ~/Music/Canturia
+```
+
+Environment overrides: `CANTURIA_BASE_URL`, `CANTURIA_API_KEY`,
+`CANTURIA_USERNAME`, `CANTURIA_PASSWORD`, `CANTURIA_MODEL`,
+`CANTURIA_TIMEOUT`, `CANTURIA_POLL_INTERVAL`, `CANTURIA_GENRE`,
+`CANTURIA_DURATION`, `CANTURIA_HOST`, `CANTURIA_PORT`,
+`CANTURIA_SERVE_PASSWORD`, `CANTURIA_OUT_DIR`.
+
+## 8. Architecture
+
+```
+canturia/
+  providers/acestep.py   thin ACE-Step client (submit, poll, download)
+  core.py                modes, genre presets, duration validation, saving
+  config.py              layered config + env expansion
+  cli.py                 Typer CLI
+  serve.py               FastAPI app factory
+  serve_page.html        self-contained web UI (package data)
+  desktop/               Tauri v2 shell + uv-bootstrapped sidecar (M2)
+tests/
+```
+
+- **Python 3.10+**, `typer`, `rich`, `requests`, `pyyaml`.
+- **Web:** `fastapi` + `uvicorn` behind the `[serve]` extra.
+- **Packaging:** hatchling; `pip install canturia`, publish to PyPI.
+- **Desktop:** Tauri v2 (Rust) + Python sidecar, `uv`-bootstrapped runtime.
+
+## 9. Privacy and storage
+
+- No account, no telemetry, no logging of prompts or audio.
+- The web session gallery is in memory, capped at 50 songs, and dies with the
+  process.
+- Save writes the audio plus a `<song>.json` sidecar into
+  `~/Music/Canturia` (configurable). Save never overwrites.
+- The only egress is the request to the configured ACE-Step server.
+
+## 10. Non-goals
+
+- Not a DAW, editor, or stem separator.
+- Not a model host; Canturía calls the server you point it at.
+- Not a prompt-engineering IDE. Advanced musical controls stay out of the main
+  flow.
+- Not a hosted multi-tenant service. The web UI is for one person or a trusted
+  group behind a password/proxy.
+
+## 11. Milestones
+
+1. **M1 — Core, CLI, web UI.** `canturia "lyrics"`, `canturia describe`, both
+   modes in the web UI, session gallery with Save/Download/Again/Delete,
+   password gate, tests. Published on PyPI.
+2. **M2 — Desktop.** Tauri shell, first-run uv runtime, Settings sheet for the
+   server URL and credentials, CI installers, landing page.
+3. **M3 — Optional depth.** Hidden/advanced controls: instrumental, vocal
+   language, BPM, key, time signature, inference steps, LoRA selection. Same
+   "simple by default" rule as Limn.
+
+## 12. Future controls (documented, not in the v1 UI)
+
+ACE-Step accepts these; they are deliberately omitted from the main screen:
+
+- `instrumental` (topic mode)
+- `vocal_language`
+- `bpm`, `key_scale`, `time_signature`
+- `inference_steps`, `guidance_scale`, `seed`
+- `model` (DiT variant)
+- LoRA load/toggle/scale endpoints
+
+When added, they belong under an Options disclosure, not in the main flow.

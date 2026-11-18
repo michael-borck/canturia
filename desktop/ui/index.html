@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Canturía</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1f24; --muted: #6b7280;
+    --line: #e3e1dc; --accent: #b85c38; --accent-ink: #ffffff; --danger: #c2452d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101216; --panel: #181b21; --ink: #e8e6e1; --muted: #8b93a1;
+      --line: #262a32; --accent: #e08a5f; --accent-ink: #1b1210; --danger: #e06c50;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .5rem .9rem; border-bottom: 1px solid var(--line);
+    background: var(--panel); user-select: none; flex: none;
+  }
+  header .title { font-weight: 650; }
+  #status { color: var(--muted); font-size: .85rem; flex: 1; }
+  header button {
+    font: inherit; border: 1px solid var(--line); border-radius: 7px;
+    background: transparent; color: var(--ink); padding: .3rem .7rem; cursor: pointer;
+  }
+  header button:hover { border-color: var(--muted); }
+  main { flex: 1; position: relative; min-height: 0; }
+  iframe#app {
+    width: 100%; height: 100%; border: 0; display: none; background: var(--bg);
+  }
+  #overlay {
+    position: absolute; inset: 0; overflow: auto; padding: 2.5rem 1.5rem;
+    display: flex; justify-content: center; background: var(--bg);
+  }
+  .sheet { width: 100%; max-width: 480px; }
+  .sheet h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
+  .sheet .sub { color: var(--muted); margin: 0 0 1.5rem; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 1.1rem 1.2rem;
+  }
+  label { display: block; font-size: .8rem; color: var(--muted); margin: .8rem 0 .25rem; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%; font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 7px; padding: .45rem .6rem;
+  }
+  .actions { display: flex; gap: .6rem; margin-top: 1.1rem; align-items: center; }
+  .primary {
+    font: inherit; font-weight: 600; border: 0; border-radius: 8px;
+    background: var(--accent); color: var(--accent-ink);
+    padding: .5rem 1.2rem; cursor: pointer;
+  }
+  .ghost {
+    font: inherit; border: 1px solid var(--line); border-radius: 8px;
+    background: transparent; color: var(--ink); padding: .5rem .9rem; cursor: pointer;
+  }
+  #err { color: var(--danger); font-size: .85rem; margin-top: .8rem; white-space: pre-wrap; }
+  .note { color: var(--muted); font-size: .78rem; margin-top: 1rem; }
+  .boot { text-align: center; margin-top: 18vh; color: var(--muted); }
+  .boot .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+    display: inline-block; margin-right: .5rem; animation: pulse 1.1s infinite;
+  }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <span class="title">Canturía</span>
+  <span id="status">starting…</span>
+  <button id="btn-settings" title="Server settings">Settings</button>
+</header>
+<main>
+  <iframe id="app" title="Canturía"></iframe>
+  <div id="overlay">
+    <div class="sheet">
+      <div id="boot" class="boot"><span class="dot"></span><span id="boot-msg">Starting Canturía…</span></div>
+
+      <div id="settings" class="hidden">
+        <h1>Your ACE-Step server</h1>
+        <p class="sub">Requests go only to the server you set here. Saved to <code>~/.canturia.yaml</code>.</p>
+        <div class="card">
+          <label for="base_url">Server URL</label>
+          <input id="base_url" placeholder="http://192.168.20.120:8002">
+
+          <label for="api_key">Bearer token <span style="font-weight:normal">(optional)</span></label>
+          <input id="api_key" type="password" placeholder="if your proxy uses a token">
+
+          <label for="username">Basic username <span style="font-weight:normal">(optional)</span></label>
+          <input id="username" placeholder="if your proxy uses HTTP Basic">
+
+          <label for="password">Basic password</label>
+          <input id="password" type="password" placeholder="with the username above">
+
+          <div class="actions">
+            <button class="primary" id="btn-save">Save &amp; start</button>
+            <button class="ghost hidden" id="btn-cancel">Cancel</button>
+          </div>
+          <div id="err"></div>
+        </div>
+        <p class="note">Use either a bearer token or Basic username/password, not both.
+        Describe mode also needs the server's lyrics writer enabled
+        (<code>resident: true</code> in <code>puente.yml</code>).</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+"use strict";
+const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
+const $ = (id) => document.getElementById(id);
+
+let serverPort = null;
+let settingsOpen = false;
+
+listen("status", (event) => {
+  $("status").textContent = event.payload;
+  $("boot-msg").textContent = event.payload;
+});
+
+function showApp() {
+  $("overlay").classList.add("hidden");
+  $("app").style.display = "block";
+  $("status").textContent = "ready — local server on 127.0.0.1:" + serverPort;
+}
+
+function showSettings(cancellable) {
+  settingsOpen = true;
+  $("overlay").classList.remove("hidden");
+  $("boot").classList.add("hidden");
+  $("settings").classList.remove("hidden");
+  $("btn-cancel").classList.toggle("hidden", !cancellable);
+  $("err").textContent = "";
+}
+
+function showBoot(message) {
+  $("overlay").classList.remove("hidden");
+  $("settings").classList.add("hidden");
+  $("boot").classList.remove("hidden");
+  if (message) $("boot-msg").textContent = message;
+}
+
+async function loadSettingsForm() {
+  const settings = await invoke("get_settings");
+  $("base_url").value = settings.base_url || "";
+  $("api_key").value = settings.api_key || "";
+  $("username").value = settings.username || "";
+  $("password").value = settings.password || "";
+  return settings;
+}
+
+async function boot(update) {
+  if (!settingsOpen) showBoot();
+  try {
+    serverPort = await invoke("start_server", { update: Boolean(update) });
+    $("app").src = "http://127.0.0.1:" + serverPort + "/";
+    if (settingsOpen) $("status").textContent = "set up your server";
+    else showApp();
+  } catch (error) {
+    $("status").textContent = "error";
+    showSettings(false);
+    $("err").textContent = String(error);
+  }
+}
+
+$("btn-save").onclick = async () => {
+  $("err").textContent = "";
+  try {
+    await invoke("save_settings", {
+      settings: {
+        base_url: $("base_url").value.trim(),
+        api_key: $("api_key").value.trim(),
+        username: $("username").value.trim(),
+        password: $("password").value,
+      },
+    });
+    settingsOpen = false;
+    showBoot("Restarting Canturía…");
+    serverPort = await invoke("restart_server");
+    $("app").src = "http://127.0.0.1:" + serverPort + "/";
+    showApp();
+  } catch (error) {
+    $("err").textContent = String(error);
+  }
+};
+
+$("btn-cancel").onclick = () => {
+  settingsOpen = false;
+  if (serverPort) showApp();
+};
+
+$("btn-settings").onclick = async () => {
+  await loadSettingsForm();
+  showSettings(Boolean(serverPort));
+};
+
+(async function init() {
+  const settings = await loadSettingsForm();
+  if (!settings.base_url) {
+    $("status").textContent = "set up your server";
+    showSettings(false);
+    return;
+  }
+  await boot(false);
+})();
+</script>
+</body>
+</html>
