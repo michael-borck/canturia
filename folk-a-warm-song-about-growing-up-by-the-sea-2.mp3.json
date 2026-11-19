@@ -1,0 +1,23 @@
+{
+  "mode": "describe",
+  "lyrics_writer": "acestep",
+  "genre": "folk",
+  "style": "",
+  "prompt": "A gentle and heartwarming acoustic folk song featuring a clean, fingerpicked acoustic guitar and a soft, clear male lead vocal. The track opens with melodic vocalizations before settling into a simple verse-chorus structure. The arrangement is intimate and sparse, with the focus on the singer's warm delivery and the intricate guitar work. A brief instrumental interlude showcases more melodic guitar lines accompanied by vocalizations, leading into a final, emotionally resonant chorus. The song concludes with a decelerating outro, where the vocals become more reflective and the guitar chords fade into a final, lingering note.",
+  "lyrics": "[Intro: Layered Vocal Harmonies]\nOoooh\nOoooh\nOoooh\nOoooh\n\n[Verse 1]\nKami kembali di utara Yogya\nKita berjuang dan bertumbuh\nMenjadi penduduk yang tepat memenuhi panggilan\nIbu pertiwi dari teluk Selat dengan seluruh\nKota-kota air yang menyanyikan lagu\nHawa yang menyelimuti kami dengan kelembutan\nKami hidup di rumah yang berakar\n\n[Chorus]\nKolium, kolium\nNada-nada jadi jalan terang\nTentang harapan dan cara hidup kami\nUntuk bersenyum dan berkarya\nMenulis kisah baru\nDi setiap sudut yang kami lewati\nKolium adalah nadanya\nArpeggiated synth mengalun jernih\nDalam setiap perjalanan kami melihat keindahan yang mencintai\nBunga-bunga dan dunia yang penuh warna\nDalam tatapan mata, kami menikmati keindahan yang nyata\nKami berbagi\n\n[Instrumental Break with Vocal Harmonies]\nOoooh\nOoooh\nOoooh\nOoooh\n\n[Chorus]\nKolium, kolium\nNada-nada jadi jalan terang\nTentang harapan dan cara hidup kami\nUntuk bersenyum dan berkarya\nMenulis kisah baru\nDi setiap sudut yang kami lewati\nKolium adalah nadanya\nArpeggiated synth mengalun jernih\nDalam setiap perjalanan kami melihat keindahan yang mencintai\nBunga-bunga dan dunia yang penuh warna\nDalam tatapan mata, kami menikmati keindahan yang nyata\nKami berbagi\n\n[Outro]\nKolium adalah nadanya\nArpeggiated synth mengalun jernih\nDalam setiap perjalanan kami melihat keindahan yang mencintai\nBunga-bunga dan dunia yang penuh warna\nDalam tatapan mata, kami menikmati keindahan yang nyata\nKami berbagi\n[Final guitar strum]",
+  "source_text": "a warm song about growing up by the sea",
+  "duration": 30.0,
+  "vocal_language": "en",
+  "thinking": true,
+  "remote_file": "/v1/audio?path=%2Fapp%2F.cache%2Facestep%2Ftmp%2Fapi_audio%2F77b3ac8a-44bb-baa4-a5b5-8a6eec69ec29.mp3",
+  "metas": {
+    "bpm": 88,
+    "duration": 230.0,
+    "genres": "N/A",
+    "keyscale": "D major",
+    "timesignature": "2",
+    "prompt": "gentle acoustic folk, warm vocals, fingerpicked guitar",
+    "lyrics": ""
+  },
+  "created": "2026-11-19T02:04:45.489773+00:00"
+}

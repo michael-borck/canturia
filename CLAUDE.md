@@ -61,7 +61,11 @@ uv run --no-sync canturia "[Verse]\nMorning light" -g folk -t 10 -o /tmp/x.mp3 \
 - `batch_size` defaults to 2; Canturía always sends 1.
 - `thinking: true` + `vocal_language` are sent explicitly on the reliable paths.
 - ACE-Step's `sample_mode`/`sample_query` (Surprise) is a chaos knob; duration
-  and language are not reliable there.
+  and language are not reliable there. `vocal_language` is ignored in that
+  path. Canturía appends "with lyrics in English and English vocals, about N
+  seconds long" to the description; it is the only lever that moved language
+  (Vietnamese → Danish → Swedish → English across four runs). Length still
+  came back 144–188 s for 30–45 s requests.
 - `/format_input` honours duration/language but may return `[Instrumental]` for
   sung vocals; do not use it as the topic path.
 - First cold request loads/downloads ~8 GB of weights; default timeout is 900 s.

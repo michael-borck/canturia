@@ -89,7 +89,7 @@ on the Mac App Store (runtime-download rules).
 |---|---|---|---|
 | `topic` *(default)* | Topic / theme / sentence | Ollama writes lyrics → ACE-Step `prompt` + `lyrics` + exact `audio_duration` + `vocal_language` + `thinking` | Yes |
 | `lyrics` | Lyrics with `[Verse]` / `[Chorus]` tags | Same ACE-Step path; words pass through | Yes |
-| `describe` | Topic / sentence | ACE-Step `sample_mode: true` + `sample_query` | No — experimental |
+| `describe` | Topic / sentence | ACE-Step `sample_mode: true` + `sample_query` with an appended English + length hint | No — experimental |
 
 `prompt` is built from the genre preset plus optional style details, e.g.
 `gentle acoustic folk, warm vocals, fingerpicked guitar, close mic`.
@@ -100,6 +100,12 @@ for the same English one-liner, ignoring both duration and language. Ollama
 writes the lyrics locally in one call; ACE-Step receives explicit lyrics, an
 exact duration, English vocals, and `thinking: true`. A 30 s request returned
 30.000 s.
+
+For Surprise/describe, the language demand is put into the description itself
+("with lyrics in English and English vocals, about N seconds long"), because
+`vocal_language` is ignored in sample mode. This is a strong suggestion, not a
+contract: testing produced Vietnamese, Danish, Swedish, and English from the
+same English prompt, and 30–45 s requests returned 144–188 s.
 
 The web UI reads `/health` and `/api/ollama`, disables the topic box when Ollama
 is offline, and disables Surprise when ACE-Step's own LM is off

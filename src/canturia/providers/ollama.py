@@ -13,6 +13,8 @@ from typing import Any
 
 import requests
 
+from canturia.languages import language_name
+
 # Prefer models that follow a "return only the lyrics" instruction. qwen3 (not
 # 3.5) tends to put its planning in `content` even with think=false; keep it as
 # a last resort.
@@ -26,19 +28,6 @@ PREFERRED_MODELS = (
     "qwen2.5",
     "qwen3",
 )
-
-_LANGUAGE_NAMES = {
-    "en": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-    "it": "Italian",
-    "pt": "Portuguese",
-    "nl": "Dutch",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "zh": "Chinese",
-}
 
 _TAG_RE = re.compile(
     r"^\s*\[(Verse|Chorus|Bridge|Intro|Outro|Pre-Chorus)", re.IGNORECASE
@@ -166,12 +155,12 @@ class OllamaClient:
             raise OllamaError("Give me a topic or a few words to write about.")
 
         model = self.resolve_model()
-        language_name = _LANGUAGE_NAMES.get(language.lower(), language)
+        language_text = language_name(language)
         line_target = max(4, min(16, round(float(duration) / 5)))
         style_text = (style or "").strip()
         style_line = f"\nStyle details: {style_text}." if style_text else ""
         user = (
-            f"Write original {genre} song lyrics in {language_name} about: "
+            f"Write original {genre} song lyrics in {language_text} about: "
             f"{subject}\n"
             f"Aim for about {int(duration)} seconds of music, roughly "
             f"{line_target} lyric lines across the sections."

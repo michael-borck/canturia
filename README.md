@@ -144,6 +144,13 @@ lyrics first, and ACE-Step receives explicit lyrics, `audio_duration`,
 `vocal_language: en`, and `thinking: true`. A 30 s request came back at exactly
 30.000 s.
 
+For the raw **Surprise me** path, Canturía appends "with lyrics in English and
+English vocals, about N seconds long" to the description, because putting the
+language in the words is the only lever that moved the 5Hz LM in testing. It is
+still best-effort: the same prompt produced Vietnamese, Danish, Swedish, and
+English across four runs, and 30–45 s requests came back at 144–188 s. Treat
+Surprise as a novelty, not a contract.
+
 `resident: true` still earns its VRAM: `thinking: true` improves audio and
 metadata backfill, and the raw Surprise path stays available. The server's own
 lyrics writer is never used by the topic box.
@@ -173,7 +180,7 @@ cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.2.0` from PyPI. For local Python
+The sidecar installs `canturia[serve]==0.2.1` from PyPI. For local Python
 changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
 instead.
 

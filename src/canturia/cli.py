@@ -358,6 +358,11 @@ def describe(
     For the reliable topic path, use `canturia topic`.
     """
     try:
+        console.print(
+            "[yellow]Describe is best-effort: Canturía asks for English and "
+            "the chosen length, but ACE-Step may ignore both. Use "
+            "`canturia topic` or supply lyrics for guarantees.[/yellow]"
+        )
         _run_generate(
             "describe",
             topic,

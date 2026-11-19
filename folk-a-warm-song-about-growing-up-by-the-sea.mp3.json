@@ -1,0 +1,23 @@
+{
+  "mode": "topic",
+  "lyrics_writer": "ollama",
+  "genre": "folk",
+  "style": "",
+  "prompt": "gentle acoustic folk, warm vocals, fingerpicked guitar",
+  "lyrics": "[Verse]\nThe tide pulls back to make room for the sand,\nA lesson I learned when I was just a hand\nHeld tight by the moonlight and salt air's sweet breath,\nWatching the old stories of my father fade death.\n\n[Chorus]\nOh, growing up means letting go of what you know,\nLike the gulls flying far above the low shore blow,\nWe learn to dance where the waves gently creep,\nAnd find our peace in a quiet deep dream.",
+  "source_text": "a warm song about growing up by the sea",
+  "duration": 30.0,
+  "vocal_language": "en",
+  "thinking": true,
+  "remote_file": "/v1/audio?path=%2Fapp%2F.cache%2Facestep%2Ftmp%2Fapi_audio%2F26e5191d-58fc-7bd8-2a8c-31b36f0306d5.mp3",
+  "metas": {
+    "bpm": 100,
+    "duration": 30.0,
+    "genres": "N/A",
+    "keyscale": "F# major",
+    "timesignature": "2",
+    "prompt": "gentle acoustic folk, warm vocals, fingerpicked guitar",
+    "lyrics": "[Verse]\nThe tide pulls back to make room for the sand,\nA lesson I learned when I was just a hand\nHeld tight by the moonlight and salt air's sweet breath,\nWatching the old stories of my father fade death.\n\n[Chorus]\nOh, growing up means letting go of what you know,\nLike the gulls flying far above the low shore blow,\nWe learn to dance where the waves gently creep,\nAnd find our peace in a quiet deep dream."
+  },
+  "created": "2026-11-19T02:01:00.422320+00:00"
+}

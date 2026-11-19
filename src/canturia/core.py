@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from canturia.config import resolve_ollama_settings
+from canturia.languages import language_name
 from canturia.providers import (
     AceStepClient,
     OllamaClient,
@@ -119,10 +120,18 @@ def build_request(
     seconds = validate_duration(duration)
     prompt = genre_prompt(genre, style)
     if mode == "describe":
+        language = language_name(vocal_language)
+        # The 5Hz LM ignores vocal_language in sample mode. The only lever
+        # that moved it in testing was putting the language in the description
+        # itself. This is still best-effort, not a contract.
+        sample_query = (
+            f"{source}, with lyrics in {language} and {language} vocals, "
+            f"about {seconds:g} seconds long"
+        )
         return SongRequest(
             prompt=prompt,
             duration=seconds,
-            sample_query=source,
+            sample_query=sample_query,
             model=model,
             thinking=thinking,
             vocal_language=vocal_language,

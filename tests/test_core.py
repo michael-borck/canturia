@@ -50,9 +50,19 @@ def test_build_request_lyrics_and_describe() -> None:
     assert lyrics.vocal_language == "en"
 
     described = build_request("describe", "a song about rain", "indie", "", 45)
-    assert described.sample_query == "a song about rain"
+    assert described.sample_query is not None
+    assert "a song about rain" in described.sample_query
+    assert "English" in described.sample_query
+    assert "45" in described.sample_query
     assert described.lyrics == ""
     assert described.prompt.startswith("indie folk-pop")
+    assert described.vocal_language == "en"
+
+    spanish = build_request(
+        "describe", "a song about rain", "indie", "", 30, vocal_language="es"
+    )
+    assert spanish.sample_query is not None
+    assert "Spanish" in spanish.sample_query
 
 
 def test_build_request_rejects_empty_and_bad_mode() -> None:
