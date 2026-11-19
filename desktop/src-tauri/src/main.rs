@@ -379,6 +379,7 @@ fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<ServerInfo, String> {
     status(app, "Starting Canturía…");
     let token = uuid::Uuid::new_v4().simple().to_string();
     let child = command(bin)
+        .env("CANTURIA_SERVE_PASSWORD", &token)
         .args([
             "serve",
             "--no-browser",
@@ -388,8 +389,6 @@ fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<ServerInfo, String> {
             "--port",
         ])
         .arg(port.to_string())
-        .arg("--password")
-        .arg(&token)
         .arg("--out-dir")
         .arg(&out_dir)
         .spawn()
