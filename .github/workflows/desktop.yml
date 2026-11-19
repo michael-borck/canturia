@@ -81,6 +81,5 @@ jobs:
           copy_first "*_x64_en-US.msi" "Canturia-Windows-x64.msi"
           copy_first "*_amd64.AppImage" "Canturia-Linux-x86_64.AppImage"
           copy_first "*_amd64.deb" "Canturia-Linux-amd64.deb"
-          copy_first "*_x86_64.rpm" "Canturia-Linux-x86_64.rpm"
           gh release upload "$GITHUB_REF_NAME" Canturia-* \
             --clobber -R "$GITHUB_REPOSITORY"
