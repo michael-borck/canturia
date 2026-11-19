@@ -15,8 +15,24 @@ CONFIG: dict[str, Any] = {
     "genre": "folk",
     "style": "",
     "duration": 30,
+    "vocal_language": "en",
+    "thinking": True,
+    "ollama": {
+        "base_url": "http://ollama",
+        "model": "qwen3.5:4b",
+        "timeout": 90,
+    },
     "serve": {"host": "127.0.0.1", "port": 2268},
 }
+
+
+def fake_ollama_status(settings: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "model": "qwen3.5:4b",
+        "models": ["qwen3.5:4b", "gemma3:4b"],
+        "error": None,
+    }
 
 
 class FakeClient:
@@ -44,11 +60,19 @@ def fake_generate(
     if on_progress:
         on_progress("rendering")
     seconds = float(duration or 30)
+    if mode == "topic":
+        lyrics = "[Verse]\nollama words"
+    elif mode == "lyrics":
+        lyrics = text
+    else:
+        lyrics = ""
     request = SongRequest(
         prompt="gentle acoustic folk",
-        lyrics=text if mode == "lyrics" else "",
+        lyrics=lyrics,
         duration=seconds,
         sample_query=text if mode == "describe" else None,
+        thinking=True,
+        vocal_language="en",
     )
     return Generation(
         songs=[
@@ -79,6 +103,7 @@ def make_app(tmp_path: Path, password: str | None = None):
         out_dir=tmp_path,
         generate_fn=fake_generate,
         client_factory=FakeClient,
+        ollama_status_fn=fake_ollama_status,
     )
 
 
@@ -99,8 +124,13 @@ def test_page_and_config(tmp_path: Path) -> None:
         config = client.get("/api/config").json()
         assert config["base_url"] == "http://ace"
         assert any(genre["key"] == "folk" for genre in config["genres"])
-        assert config["durations"] == [30, 60, 90, 120]
+        assert config["durations"] == [30, 45, 60]
+        assert config["default_mode"] == "topic"
+        assert config["ollama_model"] == "qwen3.5:4b"
         assert client.get("/api/health").json()["llm_initialized"] is False
+        ollama = client.get("/api/ollama").json()
+        assert ollama["ok"] is True
+        assert ollama["model"] == "qwen3.5:4b"
 
 
 def test_password_gate(tmp_path: Path) -> None:
@@ -164,6 +194,25 @@ def test_generate_download_save_again_delete(tmp_path: Path) -> None:
 
         assert client.delete(f"/api/songs/{song['id']}").status_code == 200
         assert client.get(f"/api/songs/{song['id']}").status_code == 404
+
+
+def test_topic_job_uses_ollama_lyrics(tmp_path: Path) -> None:
+    with TestClient(make_app(tmp_path)) as client:
+        response = client.post(
+            "/api/generate",
+            json={
+                "mode": "topic",
+                "text": "a song about rain",
+                "genre": "folk",
+                "duration": 45,
+            },
+        )
+        job = wait_for_job(client, response.json()["job_id"])
+        song = job["songs"][0]
+        assert song["mode"] == "topic"
+        assert song["text"] == "a song about rain"
+        assert song["lyrics"] == "[Verse]\nollama words"
+        assert song["duration"] == 45
 
 
 def test_describe_job_and_invalid_duration(tmp_path: Path) -> None:

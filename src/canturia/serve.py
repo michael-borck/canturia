@@ -31,6 +31,7 @@ from canturia.core import (
     client_from_settings,
     generate,
     genre_options,
+    ollama_status,
     save_song,
     slugify,
     unique_path,
@@ -85,7 +86,7 @@ class Job:
 
 
 class GeneratePayload(BaseModel):
-    mode: Literal["lyrics", "describe"] = "lyrics"
+    mode: Literal["topic", "lyrics", "describe"] = "topic"
     text: str = Field(min_length=1)
     genre: str = "folk"
     style: str | None = None
@@ -249,6 +250,7 @@ def create_app(
     out_dir: Path | None = None,
     generate_fn: Callable[..., Generation] | None = None,
     client_factory: Callable[[], Any] | None = None,
+    ollama_status_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> FastAPI:
     """Build the Canturía web app around a loaded config."""
     settings = resolve_settings(config)
@@ -259,6 +261,7 @@ def create_app(
     )
     run_generation = generate_fn or generate
     make_client = client_factory or (lambda: client_from_settings(settings))
+    get_ollama = ollama_status_fn or ollama_status
 
     songs: dict[str, Song] = {}
     jobs: dict[str, Job] = {}
@@ -422,11 +425,19 @@ def create_app(
             "base_url": settings.get("base_url"),
             "auth": bool(app_password),
             "genres": genre_options(),
-            "durations": [30, 60, 90, 120],
+            "durations": [30, 45, 60],
             "genre": settings.get("genre") or "folk",
             "style": settings.get("style") or "",
             "duration": settings.get("duration") or 30,
+            "vocal_language": settings.get("vocal_language") or "en",
+            "thinking": bool(settings.get("thinking", True)),
+            "default_mode": "topic",
+            "ollama_model": (settings.get("ollama") or {}).get("model"),
         }
+
+    @app.get("/api/ollama", dependencies=[Depends(require_auth)])
+    def api_ollama() -> dict[str, Any]:
+        return get_ollama(settings)
 
     @app.get("/api/health", dependencies=[Depends(require_auth)])
     def api_health() -> dict[str, Any]:

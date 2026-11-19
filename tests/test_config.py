@@ -10,6 +10,7 @@ from canturia.config import (
     load_config,
     merge_configs,
     normalize_base_url,
+    resolve_ollama_settings,
     resolve_serve_settings,
     resolve_settings,
 )
@@ -73,6 +74,35 @@ def test_resolve_settings_env_overrides(
     assert settings["base_url"] == "http://music.local:8002"
     assert settings["api_key"] == "token"
     assert settings["timeout"] == 120.0
+    assert settings["thinking"] is True
+    assert settings["vocal_language"] == "en"
+
+
+def test_resolve_settings_language_and_bool() -> None:
+    settings = resolve_settings(
+        {
+            "base_url": "http://ace",
+            "vocal_language": "es",
+            "thinking": "false",
+        }
+    )
+    assert settings["vocal_language"] == "es"
+    assert settings["thinking"] is False
+
+
+def test_resolve_ollama_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CANTURIA_OLLAMA_MODEL", "gemma3:4b")
+    ollama = resolve_ollama_settings(
+        {
+            "ollama": {
+                "base_url": "localhost:11434",
+                "timeout": "30",
+            }
+        }
+    )
+    assert ollama["base_url"] == "http://localhost:11434"
+    assert ollama["model"] == "gemma3:4b"
+    assert ollama["timeout"] == 30.0
 
 
 def test_resolve_serve_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -46,6 +46,8 @@ def test_build_request_lyrics_and_describe() -> None:
     assert lyrics.lyrics == "[Verse]\nhi"
     assert lyrics.sample_query is None
     assert lyrics.duration == 30.0
+    assert lyrics.thinking is True
+    assert lyrics.vocal_language == "en"
 
     described = build_request("describe", "a song about rain", "indie", "", 45)
     assert described.sample_query == "a song about rain"
@@ -127,6 +129,47 @@ def test_save_song_never_overwrites(tmp_path: Path) -> None:
     assert first != second
     assert first.read_bytes() == b"ID3one"
     assert second.read_bytes() == b"ID3two"
+
+
+def test_topic_generate_uses_ollama_lyrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[SongRequest] = []
+
+    class FakeClient:
+        def generate(self, request: SongRequest, on_progress=None) -> list[SongResult]:
+            captured.append(request)
+            return [
+                SongResult(
+                    data=b"ID3x",
+                    file_path="/app/outputs/x.mp3",
+                    prompt=request.prompt,
+                    lyrics=request.lyrics,
+                    remote_name="x.mp3",
+                )
+            ]
+
+    monkeypatch.setattr(
+        "canturia.core.write_lyrics",
+        lambda topic, settings, **kwargs: "[Verse]\nwritten by ollama",
+    )
+    monkeypatch.setattr(
+        "canturia.core.client_from_settings", lambda settings: FakeClient()
+    )
+    settings = {
+        "base_url": "http://test",
+        "genre": "folk",
+        "style": "",
+        "duration": 30,
+        "model": None,
+        "thinking": True,
+        "vocal_language": "en",
+        "ollama": {"base_url": "http://ollama", "model": "qwen3.5:4b", "timeout": 90},
+    }
+    result = generate("topic", "a song about rain", settings, duration=30)
+    assert result.mode == "topic"
+    assert result.text == "a song about rain"
+    assert captured[0].lyrics == "[Verse]\nwritten by ollama"
+    assert captured[0].thinking is True
+    assert captured[0].vocal_language == "en"
 
 
 def test_generate_builds_a_request(monkeypatch: pytest.MonkeyPatch) -> None:

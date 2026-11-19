@@ -39,6 +39,8 @@ class SongRequest:
     sample_query: str | None = None
     model: str | None = None
     batch_size: int = 1
+    thinking: bool = False
+    vocal_language: str | None = "en"
 
 
 @dataclass
@@ -212,6 +214,8 @@ class AceStepClient:
             "prompt": request.prompt,
             "audio_duration": float(request.duration),
             "batch_size": 1,
+            "thinking": bool(request.thinking),
+            "vocal_language": request.vocal_language or "en",
         }
         if request.sample_query:
             payload["sample_mode"] = True

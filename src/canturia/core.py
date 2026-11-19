@@ -9,7 +9,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from canturia.providers import AceStepClient, SongRequest, SongResult
+from canturia.config import resolve_ollama_settings
+from canturia.providers import (
+    AceStepClient,
+    OllamaClient,
+    OllamaError,
+    SongRequest,
+    SongResult,
+)
 
 DURATION_MIN = 10.0
 DURATION_MAX = 600.0
@@ -32,7 +39,7 @@ GENRES: dict[str, tuple[str, str]] = {
     "lullaby": ("Lullaby", "gentle lullaby, music box, soft vocal"),
 }
 
-MODES = {"lyrics", "describe"}
+MODES = {"topic", "lyrics", "describe"}
 
 _AUDIO_SUFFIXES = {".mp3", ".wav", ".flac", ".ogg", ".m4a"}
 
@@ -81,7 +88,9 @@ def validate_duration(value: Any) -> float:
 
 def validate_mode(mode: str) -> str:
     if mode not in MODES:
-        raise ValueError(f"Mode must be 'lyrics' or 'describe' (got {mode!r})")
+        raise ValueError(
+            f"Mode must be 'topic', 'lyrics', or 'describe' (got {mode!r})"
+        )
     return mode
 
 
@@ -92,14 +101,21 @@ def build_request(
     style: str | None = None,
     duration: Any = 30,
     model: str | None = None,
+    *,
+    thinking: bool = True,
+    vocal_language: str = "en",
 ) -> SongRequest:
-    """Build the ACE-Step request for one of the two input modes."""
+    """Build the ACE-Step request for lyrics or the raw describe path.
+
+    Topic mode is resolved in :func:`generate` because it first asks Ollama
+    for lyrics, then reuses the lyrics path.
+    """
     validate_mode(mode)
+    if mode == "topic":
+        raise ValueError("Topic mode is resolved by generate(), not build_request().")
     source = (text or "").strip()
     if not source:
-        raise ValueError(
-            "Give me lyrics, or a topic with 'describe'."
-        )
+        raise ValueError("Give me lyrics, or a topic with 'topic'.")
     seconds = validate_duration(duration)
     prompt = genre_prompt(genre, style)
     if mode == "describe":
@@ -108,12 +124,16 @@ def build_request(
             duration=seconds,
             sample_query=source,
             model=model,
+            thinking=thinking,
+            vocal_language=vocal_language,
         )
     return SongRequest(
         prompt=prompt,
         lyrics=source,
         duration=seconds,
         model=model,
+        thinking=thinking,
+        vocal_language=vocal_language,
     )
 
 
@@ -135,6 +155,51 @@ def health(settings: dict[str, Any]) -> dict[str, Any]:
     return client_from_settings(settings).health()
 
 
+def ollama_status(settings: dict[str, Any]) -> dict[str, Any]:
+    """Return the local lyricist's readiness and model list (never raises)."""
+    try:
+        ollama = resolve_ollama_settings(settings)
+        client = OllamaClient(
+            base_url=str(ollama["base_url"]),
+            model=ollama.get("model"),
+            timeout=min(float(ollama.get("timeout") or 90), 8),
+        )
+        models = client.models()
+        model = client.model
+        if not model:
+            model = client.resolve_model() if models else None
+        return {"ok": True, "model": model, "models": models, "error": None}
+    except (OllamaError, ValueError) as e:
+        return {"ok": False, "model": None, "models": [], "error": str(e)}
+
+
+def write_lyrics(
+    topic: str,
+    settings: dict[str, Any],
+    *,
+    genre: str,
+    style: str | None,
+    duration: float,
+    on_progress: Any = None,
+) -> str:
+    """Ask the local Ollama model for lyrics, then hand them to ACE-Step."""
+    ollama = resolve_ollama_settings(settings)
+    if on_progress:
+        on_progress("writing lyrics with Ollama…")
+    client = OllamaClient(
+        base_url=str(ollama["base_url"]),
+        model=ollama.get("model"),
+        timeout=float(ollama.get("timeout") or 90),
+    )
+    return client.write_lyrics(
+        topic,
+        genre=genre,
+        style=style,
+        duration=duration,
+        language=str(settings.get("vocal_language") or "en"),
+    )
+
+
 def generate(
     mode: str,
     text: str,
@@ -153,14 +218,41 @@ def generate(
     chosen_duration = (
         duration if duration is not None else settings.get("duration") or 30
     )
-    request = build_request(
-        mode,
-        text,
-        chosen_genre,
-        chosen_style,
-        chosen_duration,
-        model=settings.get("model"),
-    )
+    thinking = bool(settings.get("thinking", True))
+    vocal_language = str(settings.get("vocal_language") or "en")
+
+    source_text = (text or "").strip()
+    if mode == "topic":
+        lyrics = write_lyrics(
+            source_text,
+            settings,
+            genre=chosen_genre,
+            style=chosen_style,
+            duration=validate_duration(chosen_duration),
+            on_progress=on_progress,
+        )
+        request = build_request(
+            "lyrics",
+            lyrics,
+            chosen_genre,
+            chosen_style,
+            chosen_duration,
+            model=settings.get("model"),
+            thinking=thinking,
+            vocal_language=vocal_language,
+        )
+    else:
+        request = build_request(
+            mode,
+            source_text,
+            chosen_genre,
+            chosen_style,
+            chosen_duration,
+            model=settings.get("model"),
+            thinking=thinking,
+            vocal_language=vocal_language,
+        )
+
     client = client_from_settings(settings)
     songs = client.generate(request, on_progress=on_progress)
     return Generation(
@@ -168,7 +260,7 @@ def generate(
         mode=mode,
         genre=chosen_genre,
         style=chosen_style,
-        text=text.strip(),
+        text=source_text,
         style_prompt=request.prompt,
         duration=request.duration,
         request=request,
@@ -213,14 +305,22 @@ def audio_extension(data: bytes, remote_name: str = "") -> str:
 
 def metadata_for(generation: Generation, song: SongResult) -> dict[str, Any]:
     """Reproducibility sidecar for one saved song."""
+    writers = {
+        "topic": "ollama",
+        "lyrics": "user",
+        "describe": "acestep",
+    }
     return {
         "mode": generation.mode,
+        "lyrics_writer": writers.get(generation.mode, "unknown"),
         "genre": generation.genre,
         "style": generation.style,
         "prompt": song.prompt,
         "lyrics": song.lyrics,
         "source_text": generation.text,
         "duration": generation.duration,
+        "vocal_language": generation.request.vocal_language,
+        "thinking": generation.request.thinking,
         "remote_file": song.file_path,
         "metas": song.metas,
         "created": datetime.now(timezone.utc).isoformat(),

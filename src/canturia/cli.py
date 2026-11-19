@@ -27,9 +27,10 @@ from canturia.core import (
     DURATION_MIN,
     generate,
     health,
+    ollama_status,
     save_song,
 )
-from canturia.providers import AceStepError
+from canturia.providers import AceStepError, OllamaError
 
 console = Console()
 err_console = Console(stderr=True, style="bold red")
@@ -279,7 +280,7 @@ def generate_cmd(
             password=password,
             timeout=timeout,
         )
-    except (ConfigurationError, AceStepError, ValueError) as e:
+    except (ConfigurationError, AceStepError, OllamaError, ValueError) as e:
         err_console.print(str(e))
         raise typer.Exit(code=1) from None
 
@@ -350,10 +351,11 @@ def describe(
         show_default=False,
     ),
 ) -> None:
-    """Let ACE-Step write the lyrics from a topic (requires its LM).
+    """Raw experimental path: ACE-Step invents lyrics from a topic.
 
-    The server must have `resident: true` (its 5Hz LM enabled). If it is off,
-    this command fails with the server's explanation; use plain lyrics instead.
+    The server must have `resident: true` (its 5Hz LM enabled). This path is a
+    chaos knob: the same prompt can return a different duration or language.
+    For the reliable topic path, use `canturia topic`.
     """
     try:
         _run_generate(
@@ -371,6 +373,94 @@ def describe(
             timeout=timeout,
         )
     except (ConfigurationError, AceStepError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+@app.command()
+def topic(
+    subject: str = typer.Argument(
+        ...,
+        help="A topic, theme, or sentence; Ollama writes the lyrics.",
+    ),
+    genre: str | None = typer.Option(
+        None,
+        "--genre",
+        "-g",
+        help="Genre key (folk, pop, rock, indie, lofi, hiphop, …) or free text.",
+        show_default=False,
+    ),
+    style: str | None = typer.Option(
+        None,
+        "--style",
+        "-s",
+        help="Extra style details, e.g. 'warm female vocals, fingerpicked guitar'.",
+        show_default=False,
+    ),
+    duration: float | None = typer.Option(
+        None,
+        "--duration",
+        "-t",
+        min=DURATION_MIN,
+        max=DURATION_MAX,
+        help=f"Length in seconds ({int(DURATION_MIN)}–{int(DURATION_MAX)}).",
+        show_default=False,
+    ),
+    out: str | None = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="Output file (default: derived from the genre and topic).",
+        show_default=False,
+    ),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+    timeout: float | None = typer.Option(
+        None, "--timeout", help="Overall generation timeout in seconds.",
+        show_default=False,
+    ),
+) -> None:
+    """Write a song from a topic: Ollama writes the lyrics, ACE-Step sings.
+
+    This is the recommended topic path. Ollama runs locally, one call, and the
+    resulting lyrics go to ACE-Step with an exact duration and vocal language.
+    For the raw, experimental "ACE-Step invents everything" path, use
+    `canturia describe`.
+    """
+    try:
+        _run_generate(
+            "topic",
+            subject,
+            genre=genre,
+            style=style,
+            duration=duration,
+            out=out,
+            config=config,
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+            timeout=timeout,
+        )
+    except (ConfigurationError, AceStepError, OllamaError, ValueError) as e:
         err_console.print(str(e))
         raise typer.Exit(code=1) from None
 
@@ -408,21 +498,34 @@ def health_cmd(
         )
         settings = resolve_settings(cfg)
         data = health(settings)
+        ollama = ollama_status(settings)
         model = data.get("loaded_model") or "—"
         loaded = "loaded" if data.get("models_initialized") else "not loaded"
-        writer = "on" if data.get("llm_initialized") else "off"
         table = Table(show_header=False, box=None)
         table.add_row("Server", str(settings["base_url"]))
         table.add_row("Status", str(data.get("status") or "unknown"))
         table.add_row("Model", f"{model} ({loaded})")
-        table.add_row("Lyrics writer", writer)
+        if ollama["ok"]:
+            table.add_row("Lyrics writer", f"Ollama ({ollama['model']})")
+        else:
+            table.add_row("Lyrics writer", "Ollama offline")
+        table.add_row(
+            "ACE-Step LM",
+            "on" if data.get("llm_initialized") else "off",
+        )
         console.print(table)
+        if not ollama["ok"]:
+            console.print(
+                "[yellow]Ollama is not reachable; the topic box will not work. "
+                "Start 'ollama serve' and pull a model, or paste lyrics. "
+                "See the in-app Help for details.[/yellow]"
+            )
         if not data.get("llm_initialized"):
             console.print(
-                "[yellow]Lyrics writer is off; paste lyrics to generate. "
-                "Set resident: true in puente.yml to enable describe mode.[/yellow]"
+                "[yellow]ACE-Step's own LM is off; 'describe' is unavailable. "
+                "Set resident: true in puente.yml to enable it.[/yellow]"
             )
-    except (ConfigurationError, AceStepError, ValueError) as e:
+    except (ConfigurationError, AceStepError, OllamaError, ValueError) as e:
         err_console.print(str(e))
         raise typer.Exit(code=1) from None
 

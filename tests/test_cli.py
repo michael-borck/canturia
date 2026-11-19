@@ -56,6 +56,20 @@ def test_describe_routes_to_describe(
     assert captured["duration"] == 45.0
 
 
+def test_topic_routes_to_topic(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(mode: str, text: str, **kwargs: object) -> None:
+        captured.update(mode=mode, text=text, **kwargs)
+
+    monkeypatch.setattr("canturia.cli._run_generate", fake_run)
+    result = runner.invoke(app, ["topic", "a song about rain", "-t", "45"])
+    assert result.exit_code == 0
+    assert captured["mode"] == "topic"
+    assert captured["text"] == "a song about rain"
+    assert captured["duration"] == 45.0
+
+
 def test_lyrics_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
@@ -80,10 +94,19 @@ def test_health_output(monkeypatch: pytest.MonkeyPatch) -> None:
             "llm_initialized": False,
         },
     )
+    monkeypatch.setattr(
+        "canturia.cli.ollama_status",
+        lambda settings: {
+            "ok": True,
+            "model": "qwen3.5:4b",
+            "models": ["qwen3.5:4b"],
+            "error": None,
+        },
+    )
     result = runner.invoke(app, ["health", "--base-url", "http://ace"])
     assert result.exit_code == 0
     assert "acestep-v15-turbo" in result.output
-    assert "Lyrics writer" in result.output
+    assert "Ollama (qwen3.5:4b)" in result.output
 
 
 def test_missing_text_is_an_error() -> None:

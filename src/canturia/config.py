@@ -38,6 +38,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "genre": "folk",
     "style": "",
     "duration": 30,
+    "vocal_language": "en",
+    "thinking": True,
+    "ollama": {
+        "base_url": "http://127.0.0.1:11434",
+        "model": None,
+        "timeout": 90,
+    },
     "serve": {
         "host": "127.0.0.1",
         "port": 2268,
@@ -58,6 +65,14 @@ _ENV_OVERRIDES: dict[str, str] = {
     "poll_interval": "CANTURIA_POLL_INTERVAL",
     "genre": "CANTURIA_GENRE",
     "duration": "CANTURIA_DURATION",
+    "vocal_language": "CANTURIA_VOCAL_LANGUAGE",
+    "thinking": "CANTURIA_THINKING",
+}
+
+_OLLAMA_ENV_OVERRIDES: dict[str, str] = {
+    "base_url": "CANTURIA_OLLAMA_URL",
+    "model": "CANTURIA_OLLAMA_MODEL",
+    "timeout": "CANTURIA_OLLAMA_TIMEOUT",
 }
 
 _SERVE_ENV_OVERRIDES: dict[str, str] = {
@@ -181,6 +196,19 @@ def _env_value(env_name: str) -> str | None:
     return value if value not in (None, "") else None
 
 
+def _as_bool(value: Any, name: str, default: bool) -> bool:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ConfigurationError(f"{name} must be true or false (got {value!r})")
+
+
 def resolve_settings(config: dict[str, Any]) -> dict[str, Any]:
     """Effective ACE-Step connection settings (everything except ``serve``)."""
     settings = {k: v for k, v in config.items() if k != "serve"}
@@ -204,7 +232,33 @@ def resolve_settings(config: dict[str, Any]) -> dict[str, Any]:
     settings["poll_interval"] = _as_float(
         settings.get("poll_interval"), "poll_interval", 2.0
     )
+    settings["thinking"] = _as_bool(
+        settings.get("thinking"), "thinking", True
+    )
+    settings["vocal_language"] = str(settings.get("vocal_language") or "en")
+    ollama = settings.get("ollama")
+    if not isinstance(ollama, dict):
+        settings["ollama"] = dict(DEFAULT_CONFIG["ollama"])
     return settings
+
+
+def resolve_ollama_settings(config: dict[str, Any]) -> dict[str, Any]:
+    """Effective local lyricist settings (Ollama)."""
+    ollama = dict(DEFAULT_CONFIG["ollama"])
+    configured = config.get("ollama")
+    if isinstance(configured, dict):
+        ollama = merge_configs(ollama, configured)
+    for key, env_name in _OLLAMA_ENV_OVERRIDES.items():
+        value = _env_value(env_name)
+        if value is not None:
+            ollama[key] = value
+
+    base_url = ollama.get("base_url") or "http://127.0.0.1:11434"
+    ollama["base_url"] = normalize_base_url(str(base_url))
+    ollama["timeout"] = _as_float(ollama.get("timeout"), "ollama.timeout", 90.0)
+    model = str(ollama.get("model") or "").strip()
+    ollama["model"] = model or None
+    return ollama
 
 
 def resolve_serve_settings(config: dict[str, Any]) -> dict[str, Any]:
@@ -256,6 +310,19 @@ poll_interval: 2
 genre: folk
 style: ""
 duration: 30
+
+# The local lyricist used by the topic box. Ollama writes the lyrics on this
+# machine, then ACE-Step sings them. Pull a chat model first, e.g.
+#   ollama pull qwen3.5:4b
+# Leave model empty to auto-pick a sensible chat model from /api/tags.
+ollama:
+  base_url: http://127.0.0.1:11434
+  model: qwen3.5:4b
+  timeout: 90
+
+# Fixed for the family app; still honoured exactly on the lyrics path.
+vocal_language: en
+thinking: true
 
 serve:
   host: 127.0.0.1

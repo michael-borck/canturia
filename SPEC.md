@@ -13,8 +13,9 @@ telemetry, bring your own ACE-Step server.
 Most music tools are either a locked-in web service or a full DAW. Canturía sits
 in between: the simplest possible "words → song" surface, that you own.
 
-- **Two ways in.** Paste lyrics (works on a lean server), or describe a topic
-  and let the server write the lyrics (needs its language model).
+- **Three ways in.** Describe a topic and let a local Ollama model write the
+  lyrics, paste your own lyrics, or press Surprise and let ACE-Step invent
+  everything. The first two are reliable; the last is an explicit experiment.
 - **Minimal by design.** Genre, length, and optional style details. Nothing
   else in the main flow.
 - **Bring your own server.** Point Canturía at an ACE-Step 1.5 API on your LAN
@@ -28,8 +29,8 @@ in between: the simplest possible "words → song" surface, that you own.
 
 1. **Simple beats powerful.** One screen, two modes, one Generate button.
 2. **Local-first.** Session gallery in memory; Save is explicit.
-3. **Provider-shaped, not provider-locked.** The ACE-Step client is one thin
-   module; the core does not depend on a UI.
+3. **Provider-shaped, not provider-locked.** The ACE-Step client and the
+   Ollama lyricist are thin modules; the core does not depend on a UI.
 4. **Progressive surfaces.** The same core powers a CLI, a web UI, and a
    desktop app. Each is optional.
 5. **Fail visibly.** No silent fallback when the server's lyrics writer is off
@@ -54,14 +55,19 @@ Options: `--lyrics-file`, `--genre`, `--style`, `--duration`, `--out`,
 
 A single page:
 
-- **Lyrics** and **Describe** tabs.
+- **About a topic** (default) and **Write lyrics** tabs, plus a **Surprise me**
+  button for the raw ACE-Step path.
+- **Help** sheet and inline hints: what each mode does, where lyrics come from,
+  what Surprise does, where files are saved, and the cold-start expectation.
 - Genre chips (folk, pop, rock, indie, lo-fi, electronic, hip-hop, soul,
   country, jazz, classical, ambient, metal, lullaby) plus optional free-text
   style details.
-- Length presets 30/60/90/120 s plus a custom 10–600 s field.
-- Generate → a pending card with the server's progress text → an audio card.
+- Length presets 30/45/60 s plus a custom 10–600 s field.
+- Generate → a pending card with live progress (Ollama writing, then ACE-Step
+  generating) → an audio card.
 - Audio player, Save, Download, Again, Delete.
-- Server pill showing the loaded model and whether the lyrics writer is on.
+- Status pill for both ACE-Step and Ollama; contextual notices when either is
+  offline.
 - In-memory session gallery (max 50 songs) and JSON sidecars on Save.
 
 FastAPI + a self-contained HTML page (no CDNs). Binds `127.0.0.1` by default;
@@ -79,17 +85,26 @@ on the Mac App Store (runtime-download rules).
 
 ## 4. Input modes
 
-| Mode | Input | ACE-Step request | LM required |
+| Mode | Input | Path | Reliable? |
 |---|---|---|---|
-| `lyrics` | Lyrics with `[Verse]` / `[Chorus]` tags | `prompt` + `lyrics` + `audio_duration` + `batch_size: 1` | No |
-| `describe` | Topic / theme / sentence | `sample_mode: true` + `sample_query` + `prompt` + `audio_duration` + `batch_size: 1` | Yes |
+| `topic` *(default)* | Topic / theme / sentence | Ollama writes lyrics → ACE-Step `prompt` + `lyrics` + exact `audio_duration` + `vocal_language` + `thinking` | Yes |
+| `lyrics` | Lyrics with `[Verse]` / `[Chorus]` tags | Same ACE-Step path; words pass through | Yes |
+| `describe` | Topic / sentence | ACE-Step `sample_mode: true` + `sample_query` | No — experimental |
 
 `prompt` is built from the genre preset plus optional style details, e.g.
 `gentle acoustic folk, warm vocals, fingerpicked guitar, close mic`.
 
-The web UI reads `/health` and disables Describe when `llm_initialized` is
-false, with an explanation pointing at `resident: true` in `puente.yml`.
-The CLI lets the request through and surfaces the server's error.
+The topic path does **not** use ACE-Step's 5Hz LM to write lyrics. That model is
+a music planner: in testing it returned 144 s of Vietnamese and 184 s of Danish
+for the same English one-liner, ignoring both duration and language. Ollama
+writes the lyrics locally in one call; ACE-Step receives explicit lyrics, an
+exact duration, English vocals, and `thinking: true`. A 30 s request returned
+30.000 s.
+
+The web UI reads `/health` and `/api/ollama`, disables the topic box when Ollama
+is offline, and disables Surprise when ACE-Step's own LM is off
+(`llm_initialized: false`). `resident: true` stays useful for `thinking: true`,
+metadata backfill, and Surprise.
 
 Durations are validated in the client at 10–600 seconds, matching ACE-Step.
 `batch_size` is always 1; "Again" creates another take.
@@ -120,7 +135,9 @@ Content-Type: application/json
   "prompt": "gentle acoustic folk, warm female vocals, fingerpicked guitar",
   "lyrics": "[Verse]\nMorning light...\n[Chorus]\nGrow a little every day",
   "audio_duration": 30,
-  "batch_size": 1
+  "batch_size": 1,
+  "thinking": true,
+  "vocal_language": "en"
 }
 ```
 
@@ -191,6 +208,12 @@ poll_interval: 2
 genre: folk
 style: ""
 duration: 30
+vocal_language: en
+thinking: true
+ollama:
+  base_url: http://127.0.0.1:11434
+  model: qwen3.5:4b
+  timeout: 90
 serve:
   host: 127.0.0.1
   port: 2268
@@ -201,20 +224,22 @@ serve:
 Environment overrides: `CANTURIA_BASE_URL`, `CANTURIA_API_KEY`,
 `CANTURIA_USERNAME`, `CANTURIA_PASSWORD`, `CANTURIA_MODEL`,
 `CANTURIA_TIMEOUT`, `CANTURIA_POLL_INTERVAL`, `CANTURIA_GENRE`,
-`CANTURIA_DURATION`, `CANTURIA_HOST`, `CANTURIA_PORT`,
-`CANTURIA_SERVE_PASSWORD`, `CANTURIA_OUT_DIR`.
+`CANTURIA_DURATION`, `CANTURIA_VOCAL_LANGUAGE`, `CANTURIA_THINKING`,
+`CANTURIA_OLLAMA_URL`, `CANTURIA_OLLAMA_MODEL`, `CANTURIA_HOST`,
+`CANTURIA_PORT`, `CANTURIA_SERVE_PASSWORD`, `CANTURIA_OUT_DIR`.
 
 ## 8. Architecture
 
 ```
 canturia/
   providers/acestep.py   thin ACE-Step client (submit, poll, download)
+  providers/ollama.py    local lyricist (one call, section tags)
   core.py                modes, genre presets, duration validation, saving
   config.py              layered config + env expansion
   cli.py                 Typer CLI
   serve.py               FastAPI app factory
-  serve_page.html        self-contained web UI (package data)
-  desktop/               Tauri v2 shell + uv-bootstrapped sidecar (M2)
+  serve_page.html        self-contained web UI + Help sheet (package data)
+  desktop/               Tauri v2 shell + uv-bootstrapped sidecar
 tests/
 ```
 
@@ -226,6 +251,8 @@ tests/
 ## 9. Privacy and storage
 
 - No account, no telemetry, no logging of prompts or audio.
+- Ollama runs locally; the only lyric-writing egress is to the Ollama URL you
+  configure (localhost by default).
 - The web session gallery is in memory, capped at 50 songs, and dies with the
   process.
 - Save writes the audio plus a `<song>.json` sidecar into
@@ -243,9 +270,10 @@ tests/
 
 ## 11. Milestones
 
-1. **M1 — Core, CLI, web UI.** `canturia "lyrics"`, `canturia describe`, both
-   modes in the web UI, session gallery with Save/Download/Again/Delete,
-   password gate, tests. Published on PyPI.
+1. **M1 — Core, CLI, web UI.** `canturia "lyrics"`, `canturia topic`,
+   `canturia describe`, all three in the web UI, session gallery with
+   Save/Download/Again/Delete, password gate, Help sheet, tests. Published on
+   PyPI.
 2. **M2 — Desktop.** Tauri shell, first-run uv runtime, Settings sheet for the
    server URL and credentials, CI installers, landing page.
 3. **M3 — Optional depth.** Hidden/advanced controls: instrumental, vocal
@@ -257,7 +285,7 @@ tests/
 ACE-Step accepts these; they are deliberately omitted from the main screen:
 
 - `instrumental` (topic mode)
-- `vocal_language`
+- `vocal_language` (already fixed to `en`; expose per request later)
 - `bpm`, `key_scale`, `time_signature`
 - `inference_steps`, `guidance_scale`, `seed`
 - `model` (DiT variant)
