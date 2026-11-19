@@ -124,10 +124,18 @@ def build_request(
         # The 5Hz LM ignores vocal_language in sample mode. The only lever
         # that moved it in testing was putting the language in the description
         # itself. This is still best-effort, not a contract.
-        sample_query = (
-            f"{source}, with lyrics in {language} and {language} vocals, "
-            f"about {seconds:g} seconds long"
+        lower = source.lower()
+        already_asks = (
+            f"in {language.lower()}" in lower
+            or f"{language.lower()} lyrics" in lower
         )
+        if already_asks:
+            sample_query = f"{source}, about {seconds:g} seconds long"
+        else:
+            sample_query = (
+                f"{source}, with lyrics in {language} and {language} vocals, "
+                f"about {seconds:g} seconds long"
+            )
         return SongRequest(
             prompt=prompt,
             duration=seconds,

@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 
 /// The canturia release the runtime installs; bump with PyPI releases.
-const CANTURIA_VERSION: &str = "0.2.1";
+const CANTURIA_VERSION: &str = "0.2.2";
 
 struct Sidecar(Mutex<Option<Child>>);
 

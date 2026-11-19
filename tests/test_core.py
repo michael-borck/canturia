@@ -64,6 +64,16 @@ def test_build_request_lyrics_and_describe() -> None:
     assert spanish.sample_query is not None
     assert "Spanish" in spanish.sample_query
 
+    already = build_request(
+        "describe",
+        "a song about rain, with lyrics in English",
+        "indie",
+        "",
+        30,
+    )
+    assert already.sample_query is not None
+    assert already.sample_query.lower().count("in english") == 1
+
 
 def test_build_request_rejects_empty_and_bad_mode() -> None:
     with pytest.raises(ValueError):

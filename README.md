@@ -180,7 +180,7 @@ cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.2.1` from PyPI. For local Python
+The sidecar installs `canturia[serve]==0.2.2` from PyPI. For local Python
 changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
 instead.
 
