@@ -9,6 +9,7 @@ the desktop sidecar runs on localhost without one.
 
 from __future__ import annotations
 
+import json
 import secrets
 import threading
 import time
@@ -278,6 +279,13 @@ def create_app(
     index_html = (
         resources.files("canturia").joinpath("serve_page.html").read_text("utf-8")
     )
+
+    def desktop_index() -> str:
+        script = (
+            "<script>window.CANTURIA_TOKEN = "
+            f"{json.dumps(app_password)};</script>"
+        )
+        return index_html.replace("</head>", script + "</head>", 1)
     run_generation = generate_fn or generate
     make_client = client_factory or (lambda: client_from_settings(settings))
     get_ollama = ollama_status_fn or ollama_status
@@ -289,12 +297,22 @@ def create_app(
     sessions: dict[str, float] = {}
     lock = threading.Lock()
 
+    def supplied_token(request: Request) -> str | None:
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer "):
+            return auth[7:]
+        return request.query_params.get("token") or request.cookies.get(
+            SESSION_COOKIE
+        )
+
     def session_ok(request: Request) -> bool:
         if not app_password:
             return True
-        token = request.cookies.get(SESSION_COOKIE)
+        token = supplied_token(request)
         if not token:
             return False
+        if secrets.compare_digest(token, app_password):
+            return True
         with lock:
             created = sessions.get(token)
             if created is None:
@@ -473,6 +491,10 @@ def create_app(
         if app_password and supplied is not None and secrets.compare_digest(
             supplied, app_password
         ):
+            if desktop:
+                # A Tauri iframe is cross-site; WKWebView drops the session
+                # cookie. Embed the per-launch token and use bearer auth.
+                return HTMLResponse(desktop_index())
             response = RedirectResponse("/", status_code=303)
             set_session_cookie(response, request)
             return response

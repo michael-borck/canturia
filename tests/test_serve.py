@@ -211,6 +211,12 @@ def test_page_and_config(tmp_path: Path) -> None:
 
 
 def test_password_gate(tmp_path: Path) -> None:
+    with TestClient(
+        make_app(tmp_path, password="secret"),
+        follow_redirects=False,
+    ) as redirect_client:
+        redirect = redirect_client.get("/?password=secret")
+        assert redirect.status_code == 303
     with TestClient(make_app(tmp_path, password="secret")) as client:
         login_page = client.get("/")
         assert "password-protected" in login_page.text
@@ -234,11 +240,19 @@ def test_desktop_auto_login_with_url_password(tmp_path: Path) -> None:
         follow_redirects=False,
     ) as client:
         response = client.get("/?password=secret")
-        assert response.status_code == 303
-        assert "canturia_session" in response.cookies
-        config = client.get("/api/config")
+        assert response.status_code == 200
+        assert "CANTURIA_TOKEN" in response.text
+        assert "password-protected" not in response.text
+        # A Tauri iframe is cross-site, so the desktop page uses bearer auth
+        # rather than a cookie.
+        config = client.get(
+            "/api/config",
+            headers={"Authorization": "Bearer secret"},
+        )
         assert config.status_code == 200
         assert config.json()["desktop"] is True
+        query = client.get("/api/config?token=secret")
+        assert query.status_code == 200
     with TestClient(
         make_app(tmp_path, password="secret", desktop=True),
         follow_redirects=False,

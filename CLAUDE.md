@@ -10,7 +10,7 @@ a genre and a length, and get an MP3 from an ACE-Step 1.5 server you point it
 at. Same shape as Limn: Python core + Typer CLI + FastAPI single page + Tauri v2
 shell. PyPI package and CLI: `canturia`.
 
-## Status (0.3.1)
+## Status (0.3.2)
 
 - Python core, ACE-Step client, lyricist providers, CLI, web UI, Help sheet,
   password gate, tests — done.
@@ -37,7 +37,7 @@ shell. PyPI package and CLI: `canturia`.
   links), deployed by `.github/workflows/pages.yml` to
   https://michael-borck.github.io/canturia/.
 - 63 tests, ruff clean, basedpyright 0 errors.
-- Published on PyPI as `canturia`; 0.3.1 is the current source version.
+- Published on PyPI as `canturia`; 0.3.2 is the current source version.
 
 ## Local commands
 

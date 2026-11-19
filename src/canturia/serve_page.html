@@ -323,6 +323,7 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
+const TOKEN = window.CANTURIA_TOKEN || "";
 const gallery = $("gallery"), empty = $("empty"), errBox = $("error");
 const text = $("text"), go = $("go"), surprise = $("surprise"), notice = $("notice");
 const durationInput = $("duration"), styleInput = $("style");
@@ -355,7 +356,11 @@ const state = {
 };
 
 async function api(path, options = {}) {
-  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const headers = {
+    "Content-Type": "application/json",
+    ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+    ...(options.headers || {}),
+  };
   const response = await fetch(path, { ...options, headers });
   if (response.status === 401) {
     window.location.reload();
@@ -627,7 +632,8 @@ function addCard(song) {
   const audio = document.createElement("audio");
   audio.controls = true;
   audio.preload = "metadata";
-  audio.src = `/api/songs/${song.id}`;
+  audio.src = `/api/songs/${song.id}` +
+    (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "");
   audio.setAttribute("aria-label", title.textContent);
 
   let lyrics = null;
@@ -664,7 +670,8 @@ function addCard(song) {
   download.type = "button";
   download.textContent = "Download";
   download.onclick = () => {
-    window.location.href = `/api/songs/${song.id}?download=1`;
+    window.location.href = `/api/songs/${song.id}?download=1` +
+      (TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : "");
   };
 
   const again = document.createElement("button");
