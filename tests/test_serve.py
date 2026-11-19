@@ -162,11 +162,16 @@ def fake_generate(
     )
 
 
-def make_app(tmp_path: Path, password: str | None = None):
+def make_app(
+    tmp_path: Path,
+    password: str | None = None,
+    desktop: bool = False,
+):
     return create_app(
         CONFIG,
         password=password,
         out_dir=tmp_path,
+        desktop=desktop,
         generate_fn=fake_generate,
         client_factory=FakeClient,
         ollama_status_fn=fake_ollama_status,
@@ -221,6 +226,26 @@ def test_password_gate(tmp_path: Path) -> None:
         assert client.get("/api/config").status_code == 200
         assert client.post("/api/logout").status_code == 200
         assert client.get("/api/config").status_code == 401
+
+
+def test_desktop_auto_login_with_url_password(tmp_path: Path) -> None:
+    with TestClient(
+        make_app(tmp_path, password="secret", desktop=True),
+        follow_redirects=False,
+    ) as client:
+        response = client.get("/?password=secret")
+        assert response.status_code == 303
+        assert "canturia_session" in response.cookies
+        config = client.get("/api/config")
+        assert config.status_code == 200
+        assert config.json()["desktop"] is True
+    with TestClient(
+        make_app(tmp_path, password="secret", desktop=True),
+        follow_redirects=False,
+    ) as other:
+        wrong = other.get("/?password=nope")
+        assert wrong.status_code == 200
+        assert "password-protected" in wrong.text
 
 
 def test_generate_download_save_again_delete(tmp_path: Path) -> None:

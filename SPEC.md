@@ -313,7 +313,7 @@ tests/
 2. **M2 — Desktop.** Tauri shell, first-run uv runtime, Settings sheet for the
    server URL, credentials, and lyricist/BYOK, CI installers, landing page.
 3. **M3 — Lyricists and preview.** `lyricists/` providers, `canturia lyrics`,
-   `canturia compare`, web Preview lyrics → edit → Sing, 0.3.0.
+   `canturia compare`, web Preview lyrics → edit → Sing, 0.3.1.
 4. **M4 — Optional depth.** Hidden/advanced controls: instrumental, vocal
    language, BPM, key, time signature, inference steps, LoRA selection. Same
    "simple by default" rule as Limn.

@@ -1,0 +1,13 @@
+{
+  "name": "canturia-desktop",
+  "private": true,
+  "version": "0.3.1",
+  "description": "Canturía Tauri shell",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -19,9 +19,15 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 
 /// The canturia release the runtime installs; bump with PyPI releases.
-const CANTURIA_VERSION: &str = "0.3.0";
+const CANTURIA_VERSION: &str = "0.3.1";
 
 struct Sidecar(Mutex<Option<Child>>);
+
+#[derive(Serialize, Clone)]
+struct ServerInfo {
+    port: u16,
+    token: String,
+}
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct Settings {
@@ -358,7 +364,7 @@ fn kill_sidecar(sidecar: &Sidecar) {
     }
 }
 
-fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<u16, String> {
+fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<ServerInfo, String> {
     let settings = get_settings();
     if settings.base_url.trim().is_empty() {
         return Err("Set up your ACE-Step server first".into());
@@ -371,16 +377,20 @@ fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<u16, String> {
         .join("Canturia");
 
     status(app, "Starting Canturía…");
+    let token = uuid::Uuid::new_v4().simple().to_string();
     let child = command(bin)
         .args([
             "serve",
             "--no-browser",
+            "--desktop",
             "--host",
             "127.0.0.1",
             "--port",
-            &port.to_string(),
-            "--out-dir",
         ])
+        .arg(port.to_string())
+        .arg("--password")
+        .arg(&token)
+        .arg("--out-dir")
         .arg(&out_dir)
         .spawn()
         .map_err(|e| format!("Could not start canturia: {e}"))?;
@@ -394,7 +404,7 @@ fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<u16, String> {
     loop {
         if TcpStream::connect(&addr).is_ok() {
             std::thread::sleep(Duration::from_millis(300));
-            return Ok(port);
+            return Ok(ServerInfo { port, token });
         }
         if Instant::now() > deadline {
             return Err("Canturía server did not come up within 30s".into());
@@ -404,7 +414,7 @@ fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<u16, String> {
 }
 
 #[tauri::command]
-async fn start_server(app: AppHandle, update: bool) -> Result<u16, String> {
+async fn start_server(app: AppHandle, update: bool) -> Result<ServerInfo, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if get_settings().base_url.trim().is_empty() {
             return Err("Set up your ACE-Step server first".into());
@@ -417,7 +427,7 @@ async fn start_server(app: AppHandle, update: bool) -> Result<u16, String> {
 }
 
 #[tauri::command]
-async fn restart_server(app: AppHandle) -> Result<u16, String> {
+async fn restart_server(app: AppHandle) -> Result<ServerInfo, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let bin = ensure_runtime(&app, false)?;
         spawn_sidecar(&app, &bin)

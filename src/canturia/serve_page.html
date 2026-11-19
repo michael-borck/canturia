@@ -927,7 +927,7 @@ async function boot() {
     if (config.style) styleInput.value = config.style;
     renderGenres(config.genres || []);
     renderDurations(config.durations || [30, 45, 60]);
-    if (config.auth) lock.style.display = "";
+    if (config.auth && !config.desktop) lock.style.display = "";
     setMode(config.default_mode || "topic");
   } catch (err) {
     showError(err.message);

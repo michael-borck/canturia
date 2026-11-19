@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from canturia import __version__
@@ -269,6 +269,7 @@ def create_app(
     lyrics_fn: Callable[..., LyricResult] | None = None,
     lyricist_options_fn: Callable[[dict[str, Any]], list[dict[str, Any]]]
     | None = None,
+    desktop: bool = False,
 ) -> FastAPI:
     """Build the Canturía web app around a loaded config."""
     settings = resolve_settings(config)
@@ -306,6 +307,19 @@ def create_app(
     def require_auth(request: Request) -> None:
         if not session_ok(request):
             raise HTTPException(status_code=401, detail="Password required")
+
+    def set_session_cookie(response: Response, request: Request) -> None:
+        token = secrets.token_urlsafe(32)
+        with lock:
+            sessions[token] = time.time()
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            max_age=SESSION_TTL,
+            httponly=True,
+            samesite="strict",
+            secure=request.url.scheme == "https",
+        )
 
     def evict_jobs_locked() -> None:
         while len(jobs) > MAX_JOBS:
@@ -455,6 +469,13 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> Response:
+        supplied = request.query_params.get("password")
+        if app_password and supplied is not None and secrets.compare_digest(
+            supplied, app_password
+        ):
+            response = RedirectResponse("/", status_code=303)
+            set_session_cookie(response, request)
+            return response
         if not session_ok(request):
             return HTMLResponse(LOGIN_HTML)
         return HTMLResponse(index_html)
@@ -469,17 +490,7 @@ def create_app(
             raise HTTPException(status_code=401, detail="Wrong password")
         response = JSONResponse({"ok": True})
         if app_password:
-            token = secrets.token_urlsafe(32)
-            with lock:
-                sessions[token] = time.time()
-            response.set_cookie(
-                SESSION_COOKIE,
-                token,
-                max_age=SESSION_TTL,
-                httponly=True,
-                samesite="strict",
-                secure=request.url.scheme == "https",
-            )
+            set_session_cookie(response, request)
         return response
 
     @app.post("/api/logout")
@@ -506,6 +517,7 @@ def create_app(
             "vocal_language": settings.get("vocal_language") or "en",
             "thinking": bool(settings.get("thinking", True)),
             "default_mode": "topic",
+            "desktop": desktop,
             "lyricist": settings.get("lyricist") or "ollama",
             "ollama_model": (settings.get("ollama") or {}).get("model"),
         }

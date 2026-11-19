@@ -27,7 +27,7 @@ cd desktop
 cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.3.0` from PyPI. To use the local source
+The sidecar installs `canturia[serve]==0.3.1` from PyPI. To use the local source
 instead, set `CANTURIA_DEV_PATH="/Volumes/Crucial X9/Projects/song-gen"`; the
 first run downloads `uv` if needed, then installs the editable package. Delete
 the app-data `runtime/canturia-version` marker to force a reinstall after

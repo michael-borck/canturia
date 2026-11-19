@@ -798,6 +798,11 @@ def serve(
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Don't auto-open the browser."
     ),
+    desktop: bool = typer.Option(
+        False,
+        "--desktop",
+        help="Desktop sidecar mode: hide the web Lock button.",
+    ),
 ) -> None:
     r"""Run the local web UI (needs: pip install 'canturia\[serve]')."""
     import threading
@@ -832,20 +837,25 @@ def serve(
         chosen_password = None
 
     local = chosen_host in ("127.0.0.1", "localhost", "::1")
+    generated_password = False
     if not local and not chosen_password:
         chosen_password = secrets.token_urlsafe(12)
+        generated_password = True
         console.print(f"Generated password: [bold]{chosen_password}[/bold]")
 
     application = create_app(
         cfg,
         password=str(chosen_password) if chosen_password else None,
         out_dir=Path(chosen_out).expanduser(),
+        desktop=desktop,
     )
 
     url = f"http://{chosen_host}:{chosen_port}/"
     console.print(f"Canturía web UI: [bold green]{url}[/bold green]  (Ctrl+C to stop)")
-    if chosen_password:
+    if generated_password:
         console.print(f"Password: [bold]{chosen_password}[/bold]")
+    elif chosen_password:
+        console.print("Password: set (not echoed).")
     if not no_browser and local:
         threading.Timer(0.8, webbrowser.open, args=[url]).start()
 

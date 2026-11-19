@@ -150,7 +150,7 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
 
-let serverPort = null;
+let serverInfo = null;
 let settingsOpen = false;
 
 listen("status", (event) => {
@@ -158,10 +158,16 @@ listen("status", (event) => {
   $("boot-msg").textContent = event.payload;
 });
 
+function openApp() {
+  if (!serverInfo) return;
+  $("app").src = "http://127.0.0.1:" + serverInfo.port +
+    "/?password=" + encodeURIComponent(serverInfo.token);
+}
+
 function showApp() {
   $("overlay").classList.add("hidden");
   $("app").style.display = "block";
-  $("status").textContent = "ready — local server on 127.0.0.1:" + serverPort;
+  $("status").textContent = "ready — local server on 127.0.0.1:" + serverInfo.port;
 }
 
 function showSettings(cancellable) {
@@ -217,8 +223,8 @@ $("lyricist").addEventListener("change", syncLyricistFields);
 async function boot(update) {
   if (!settingsOpen) showBoot();
   try {
-    serverPort = await invoke("start_server", { update: Boolean(update) });
-    $("app").src = "http://127.0.0.1:" + serverPort + "/";
+    serverInfo = await invoke("start_server", { update: Boolean(update) });
+    openApp();
     if (settingsOpen) $("status").textContent = "set up your server";
     else showApp();
   } catch (error) {
@@ -247,8 +253,8 @@ $("btn-save").onclick = async () => {
     });
     settingsOpen = false;
     showBoot("Restarting Canturía…");
-    serverPort = await invoke("restart_server");
-    $("app").src = "http://127.0.0.1:" + serverPort + "/";
+    serverInfo = await invoke("restart_server");
+    openApp();
     showApp();
   } catch (error) {
     $("err").textContent = String(error);
@@ -257,12 +263,12 @@ $("btn-save").onclick = async () => {
 
 $("btn-cancel").onclick = () => {
   settingsOpen = false;
-  if (serverPort) showApp();
+  if (serverInfo) showApp();
 };
 
 $("btn-settings").onclick = async () => {
   await loadSettingsForm();
-  showSettings(Boolean(serverPort));
+  showSettings(Boolean(serverInfo));
 };
 
 (async function init() {

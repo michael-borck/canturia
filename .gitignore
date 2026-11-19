@@ -26,3 +26,7 @@ desktop/src-tauri/gen/
 
 # OS
 .DS_Store
+
+# Node (Tauri CLI)
+node_modules/
+desktop/package-lock.json.bak
