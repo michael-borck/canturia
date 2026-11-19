@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "canturia-desktop"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "dirs 5.0.1",
  "serde",

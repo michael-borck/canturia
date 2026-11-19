@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 
 /// The canturia release the runtime installs; bump with PyPI releases.
-const CANTURIA_VERSION: &str = "0.2.2";
+const CANTURIA_VERSION: &str = "0.3.0";
 
 struct Sidecar(Mutex<Option<Child>>);
 
@@ -29,6 +29,12 @@ struct Settings {
     api_key: String,
     username: String,
     password: String,
+    lyricist: String,
+    ollama_url: String,
+    ollama_model: String,
+    openai_url: String,
+    openai_model: String,
+    openai_key: String,
 }
 
 fn status(app: &AppHandle, message: &str) {
@@ -49,6 +55,27 @@ fn yaml_str(value: &serde_yaml::Value, key: &str) -> String {
         .to_string()
 }
 
+fn yaml_str_path(value: &serde_yaml::Value, path: &[&str]) -> String {
+    let mut current = value;
+    for key in path {
+        match current.get(*key) {
+            Some(next) => current = next,
+            None => return String::new(),
+        }
+    }
+    current.as_str().unwrap_or_default().to_string()
+}
+
+fn set_str(map: &mut serde_yaml::Mapping, key: &str, value: &str) {
+    let trimmed = value.trim();
+    let value_key = serde_yaml::Value::String(key.to_string());
+    if trimmed.is_empty() {
+        map.remove(&value_key);
+    } else {
+        map.insert(value_key, trimmed.to_string().into());
+    }
+}
+
 #[tauri::command]
 fn get_settings() -> Settings {
     let Ok(path) = config_path() else {
@@ -60,11 +87,42 @@ fn get_settings() -> Settings {
     let Ok(root) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
         return Settings::default();
     };
+    let ollama_url = {
+        let value = yaml_str_path(&root, &["lyricists", "ollama", "base_url"]);
+        if value.is_empty() {
+            yaml_str_path(&root, &["ollama", "base_url"])
+        } else {
+            value
+        }
+    };
+    let ollama_model = {
+        let value = yaml_str_path(&root, &["lyricists", "ollama", "model"]);
+        if value.is_empty() {
+            yaml_str_path(&root, &["ollama", "model"])
+        } else {
+            value
+        }
+    };
     Settings {
         base_url: yaml_str(&root, "base_url"),
         api_key: yaml_str(&root, "api_key"),
         username: yaml_str(&root, "username"),
         password: yaml_str(&root, "password"),
+        lyricist: yaml_str(&root, "lyricist"),
+        ollama_url,
+        ollama_model,
+        openai_url: yaml_str_path(
+            &root,
+            &["lyricists", "openai-compatible", "base_url"],
+        ),
+        openai_model: yaml_str_path(
+            &root,
+            &["lyricists", "openai-compatible", "model"],
+        ),
+        openai_key: yaml_str_path(
+            &root,
+            &["lyricists", "openai-compatible", "api_key"],
+        ),
     }
 }
 
@@ -75,6 +133,14 @@ fn save_settings(settings: Settings) -> Result<(), String> {
     }
     if !settings.username.is_empty() && settings.password.is_empty() {
         return Err("Basic auth needs both a username and a password".into());
+    }
+    let lyricist = if settings.lyricist.trim().is_empty() {
+        "ollama".to_string()
+    } else {
+        settings.lyricist.trim().to_string()
+    };
+    if !["ollama", "openai-compatible", "acestep"].contains(&lyricist.as_str()) {
+        return Err("Pick a lyricist: ollama, openai-compatible, or acestep".into());
     }
     let path = config_path()?;
 
@@ -94,6 +160,7 @@ fn save_settings(settings: Settings) -> Result<(), String> {
         "base_url".into(),
         settings.base_url.trim().to_string().into(),
     );
+    map.insert("lyricist".into(), lyricist.into());
     for (key, value) in [
         ("api_key", &settings.api_key),
         ("username", &settings.username),
@@ -107,6 +174,37 @@ fn save_settings(settings: Settings) -> Result<(), String> {
             map.insert(value_key, trimmed.to_string().into());
         }
     }
+
+    let mut lyricists = map
+        .get("lyricists")
+        .cloned()
+        .unwrap_or(serde_yaml::Value::Mapping(Default::default()));
+    if !matches!(lyricists, serde_yaml::Value::Mapping(_)) {
+        lyricists = serde_yaml::Value::Mapping(Default::default());
+    }
+    if let serde_yaml::Value::Mapping(blocks) = &mut lyricists {
+        let mut ollama = blocks
+            .get("ollama")
+            .cloned()
+            .unwrap_or(serde_yaml::Value::Mapping(Default::default()));
+        if let serde_yaml::Value::Mapping(block) = &mut ollama {
+            set_str(block, "base_url", &settings.ollama_url);
+            set_str(block, "model", &settings.ollama_model);
+        }
+        blocks.insert("ollama".into(), ollama);
+
+        let mut openai = blocks
+            .get("openai-compatible")
+            .cloned()
+            .unwrap_or(serde_yaml::Value::Mapping(Default::default()));
+        if let serde_yaml::Value::Mapping(block) = &mut openai {
+            set_str(block, "base_url", &settings.openai_url);
+            set_str(block, "model", &settings.openai_model);
+            set_str(block, "api_key", &settings.openai_key);
+        }
+        blocks.insert("openai-compatible".into(), openai);
+    }
+    map.insert("lyricists".into(), lyricists);
 
     let text = serde_yaml::to_string(&root).map_err(|e| e.to_string())?;
     fs::write(&path, text).map_err(|e| e.to_string())?;

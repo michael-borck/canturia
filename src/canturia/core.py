@@ -11,6 +11,12 @@ from typing import Any
 
 from canturia.config import resolve_ollama_settings
 from canturia.languages import language_name
+from canturia.lyricists import build_lyricist, lyricist_options
+from canturia.lyricists.base import (
+    LyricistError,
+    LyricRequest,
+    LyricResult,
+)
 from canturia.providers import (
     AceStepClient,
     OllamaClient,
@@ -57,6 +63,8 @@ class Generation:
     style_prompt: str
     duration: float
     request: SongRequest
+    lyricist: str | None = None
+    lyricist_model: str | None = None
 
 
 def genre_options() -> list[dict[str, str]]:
@@ -190,6 +198,31 @@ def ollama_status(settings: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "model": None, "models": [], "error": str(e)}
 
 
+def lyrics(
+    topic: str,
+    settings: dict[str, Any],
+    *,
+    genre: str,
+    style: str | None,
+    duration: float,
+    lyricist: str | None = None,
+    on_progress: Any = None,
+) -> LyricResult:
+    """Write lyrics only, using the chosen lyricist."""
+    subject = (topic or "").strip()
+    if not subject:
+        raise LyricistError("Give me a topic or a few words to write about.")
+    writer = build_lyricist(lyricist, settings)
+    request = LyricRequest(
+        topic=subject,
+        genre=genre,
+        style=(style or "").strip(),
+        duration=validate_duration(duration),
+        language=str(settings.get("vocal_language") or "en"),
+    )
+    return writer.write(request, on_progress=on_progress)
+
+
 def write_lyrics(
     topic: str,
     settings: dict[str, Any],
@@ -197,24 +230,56 @@ def write_lyrics(
     genre: str,
     style: str | None,
     duration: float,
+    lyricist: str | None = None,
     on_progress: Any = None,
 ) -> str:
-    """Ask the local Ollama model for lyrics, then hand them to ACE-Step."""
-    ollama = resolve_ollama_settings(settings)
-    if on_progress:
-        on_progress("writing lyrics with Ollama…")
-    client = OllamaClient(
-        base_url=str(ollama["base_url"]),
-        model=ollama.get("model"),
-        timeout=float(ollama.get("timeout") or 90),
-    )
-    return client.write_lyrics(
+    """Compatibility wrapper returning only the lyric text."""
+    return lyrics(
         topic,
+        settings,
         genre=genre,
         style=style,
         duration=duration,
-        language=str(settings.get("vocal_language") or "en"),
-    )
+        lyricist=lyricist,
+        on_progress=on_progress,
+    ).lyrics
+
+
+def compare_lyrics(
+    topic: str,
+    settings: dict[str, Any],
+    names: list[str],
+    *,
+    genre: str,
+    style: str | None,
+    duration: float,
+    on_progress: Any = None,
+) -> list[LyricResult]:
+    """Run several lyricists, returning an error result for any failure."""
+    results: list[LyricResult] = []
+    for name in names:
+        try:
+            results.append(
+                lyrics(
+                    topic,
+                    settings,
+                    genre=genre,
+                    style=style,
+                    duration=duration,
+                    lyricist=name,
+                    on_progress=on_progress,
+                )
+            )
+        except Exception as exc:  # one provider must not stop the comparison
+            results.append(
+                LyricResult(lyrics="", provider=name, error=str(exc))
+            )
+    return results
+
+
+def lyricist_choices(settings: dict[str, Any]) -> list[dict[str, Any]]:
+    """Availability for each configured lyricist (for CLI/web status)."""
+    return lyricist_options(settings)
 
 
 def generate(
@@ -225,6 +290,7 @@ def generate(
     genre: str | None = None,
     style: str | None = None,
     duration: Any = None,
+    lyricist: str | None = None,
     on_progress: Any = None,
 ) -> Generation:
     """Generate one song (batch size 1) from lyrics or a topic."""
@@ -239,18 +305,23 @@ def generate(
     vocal_language = str(settings.get("vocal_language") or "en")
 
     source_text = (text or "").strip()
+    writer_name: str | None
+    writer_model: str | None = None
     if mode == "topic":
-        lyrics = write_lyrics(
+        written = lyrics(
             source_text,
             settings,
             genre=chosen_genre,
             style=chosen_style,
             duration=validate_duration(chosen_duration),
+            lyricist=lyricist,
             on_progress=on_progress,
         )
+        writer_name = written.provider
+        writer_model = written.model
         request = build_request(
             "lyrics",
-            lyrics,
+            written.lyrics,
             chosen_genre,
             chosen_style,
             chosen_duration,
@@ -259,6 +330,9 @@ def generate(
             vocal_language=vocal_language,
         )
     else:
+        writer_name = "user" if mode == "lyrics" else "acestep"
+        if mode == "describe":
+            writer_model = "ACE-Step 5Hz LM"
         request = build_request(
             mode,
             source_text,
@@ -281,6 +355,8 @@ def generate(
         style_prompt=request.prompt,
         duration=request.duration,
         request=request,
+        lyricist=writer_name,
+        lyricist_model=writer_model,
     )
 
 
@@ -329,7 +405,9 @@ def metadata_for(generation: Generation, song: SongResult) -> dict[str, Any]:
     }
     return {
         "mode": generation.mode,
-        "lyrics_writer": writers.get(generation.mode, "unknown"),
+        "lyrics_writer": generation.lyricist
+        or writers.get(generation.mode, "unknown"),
+        "lyricist_model": generation.lyricist_model,
         "genre": generation.genre,
         "style": generation.style,
         "prompt": song.prompt,

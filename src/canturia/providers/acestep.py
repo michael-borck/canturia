@@ -208,6 +208,33 @@ class AceStepClient:
         data = self._unwrap(response.json())
         return data if isinstance(data, dict) else {}
 
+    def create_sample(
+        self,
+        query: str,
+        *,
+        instrumental: bool = False,
+        vocal_language: str = "en",
+        temperature: float = 0.8,
+    ) -> dict[str, Any]:
+        """Ask ACE-Step's 5Hz LM for a caption + lyrics, without audio.
+
+        This is the experimental lyricist used for comparison. It often returns
+        ``[Instrumental]`` even when asked for sung vocals; callers should treat
+        that as a normal failure.
+        """
+        response = self._request(
+            "POST",
+            "/v1/create_sample",
+            json_body={
+                "query": query,
+                "instrumental": instrumental,
+                "vocal_language": vocal_language,
+                "temperature": temperature,
+            },
+        )
+        data = self._unwrap(response.json())
+        return data if isinstance(data, dict) else {}
+
     def submit(self, request: SongRequest) -> str:
         """Queue a generation and return its task id."""
         payload: dict[str, Any] = {

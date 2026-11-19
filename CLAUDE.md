@@ -10,22 +10,29 @@ a genre and a length, and get an MP3 from an ACE-Step 1.5 server you point it
 at. Same shape as Limn: Python core + Typer CLI + FastAPI single page + Tauri v2
 shell. PyPI package and CLI: `canturia`.
 
-## Status (0.2.0)
+## Status (0.3.0)
 
-- Python core, ACE-Step client, Ollama lyricist, CLI, web UI, Help sheet,
+- Python core, ACE-Step client, lyricist providers, CLI, web UI, Help sheet,
   password gate, tests — done.
+- **Lyricist providers**: `ollama` (default), `openai-compatible` (BYOK), and
+  `acestep` (experimental, via `/v1/create_sample`). `canturia lyrics` writes
+  lyrics only; `canturia compare` runs several side by side.
+- **Web preview**: write lyrics with the selected lyricist, edit them, then
+  **Sing these lyrics** with an exact duration.
 - **Topic mode verified live**: Ollama (`qwen3.5:4b`) wrote English lyrics, and
   a 30 s ACE-Step request returned exactly 30.000 s with `vocal_language: en`
   and `thinking: true`.
-- **Lyrics mode verified live** against `http://192.168.20.120:8002`.
-- **Surprise/describe is experimental**: the 5Hz LM is a music planner, not a
-  lyricist. The same one-liner returned 144 s Vietnamese, then 184 s Danish,
-  ignoring duration and language. The topic box deliberately does not use it.
+- **ACE-Step as lyricist** often returns `[Instrumental]` or repetitive text;
+  label it experimental. `compare` now shows this honestly.
+- **Surprise/describe is experimental**: the same one-liner returned 144 s
+  Vietnamese, then 184 s Danish. The default topic box deliberately does not
+  use it; the ACE-Step lyricist is opt-in for comparison.
 - `resident: true` is live on the server. It keeps `thinking: true`, metadata
-  backfill, and Surprise available.
-- Tauri shell, icons, `cargo check`, CI workflows — in the repo.
-- 52 tests, ruff clean, basedpyright 0 errors.
-- Published on PyPI as `canturia`; 0.2.0 is the current source version.
+  backfill, Surprise, and the ACE-Step lyricist available.
+- Tauri shell, icons, `cargo check`, CI workflows, lyricist/BYOK Settings — in
+  the repo.
+- 62 tests, ruff clean, basedpyright 0 errors.
+- Published on PyPI as `canturia`; 0.3.0 is the current source version.
 
 ## Local commands
 
@@ -40,7 +47,16 @@ uv run --no-sync pytest
 Live smoke tests:
 
 ```bash
-# Topic path: Ollama writes the lyrics
+# Lyrics only
+uv run --no-sync canturia lyrics "a warm song about growing up by the sea" \
+  -g folk -t 30 --lyricist ollama --base-url http://192.168.20.120:8002
+
+# Compare lyricists
+uv run --no-sync canturia compare "a birthday song for grandma" \
+  -g folk -t 30 --with ollama --with acestep \
+  --base-url http://192.168.20.120:8002
+
+# Topic path: a lyricist writes, ACE-Step sings
 uv run --no-sync canturia topic "a warm song about growing up by the sea" \
   -g folk -t 30 -o /tmp/topic.mp3 --base-url http://192.168.20.120:8002
 
@@ -70,16 +86,20 @@ uv run --no-sync canturia "[Verse]\nMorning light" -g folk -t 10 -o /tmp/x.mp3 \
   sung vocals; do not use it as the topic path.
 - First cold request loads/downloads ~8 GB of weights; default timeout is 900 s.
 
-## Ollama gotchas
+## Lyricist gotchas
 
-- Default model is `qwen3.5:4b`. `qwen3:4b` puts planning text in `content`;
-  `think: false` is set, but qwen3 still misbehaves. qwen3.5 and gemma3 work.
-- `resolve_model` prefers qwen3.5, then gemma3, llama3.1, llama3, mistral, phi3,
-  qwen2.5, qwen3. Set `ollama.model` to override.
-- The lyric prompt asks for `[Verse]`/`[Chorus]`, English, no preamble. Cleaning
-  strips code fences and any text before the first section tag.
-- If Ollama is offline, Lyrics mode still works; the topic tab is disabled with
-  an explanation.
+- Ollama default model is `qwen3.5:4b`. `qwen3:4b` puts planning text in
+  `content`; qwen3.5 and gemma3 work. `think: false` is set.
+- `resolve_model` prefers qwen3.5, gemma3, llama3.1, llama3, mistral, phi3,
+  qwen2.5, qwen3. Set `lyricists.ollama.model` to override.
+- OpenAI-compatible requires a `base_url` ending at the API root (include
+  `/v1`) and a `model`; `api_key` is optional for local servers. The key lives
+  in `~/.canturia.yaml` or `CANTURIA_OPENAI_API_KEY` and is never exposed to
+  the browser.
+- ACE-Step's `/v1/create_sample` often returns `[Instrumental]`; `compare`
+  reports that as an error for that provider and keeps the others.
+- If the selected lyricist is offline, Lyrics mode still works; the topic tab
+  is disabled with an explanation.
 
 ## Machine gotchas
 
@@ -92,8 +112,10 @@ uv run --no-sync canturia "[Verse]\nMorning light" -g folk -t 10 -o /tmp/x.mp3 \
 
 ## Decisions
 
-- Three input modes: `topic` (Ollama, default), `lyrics` (user), `describe`
-  (raw ACE-Step, labelled "Surprise me").
+- Three input modes: `topic` (chosen lyricist, default), `lyrics` (user),
+  `describe` (raw ACE-Step, labelled "Surprise me").
+- Lyricists: `ollama` (default), `openai-compatible` (BYOK), `acestep`
+  (experimental). Preview/edit before singing.
 - Genre chips + free-text style; length presets 30/45/60 + custom 10–600 s.
 - Session gallery in memory; Save to `~/Music/Canturia` + JSON sidecar;
   Download/Again/Delete.

@@ -57,8 +57,13 @@ A single page:
 
 - **About a topic** (default) and **Write lyrics** tabs, plus a **Surprise me**
   button for the raw ACE-Step path.
+- A **lyricist selector**: Ollama, OpenAI-compatible (BYOK), or ACE-Step LM
+  (experimental), with availability and model shown.
+- **Preview lyrics**: write the words first, edit them, then **Sing these
+  lyrics** with an exact duration. This is the comparison workflow.
 - **Help** sheet and inline hints: what each mode does, where lyrics come from,
-  what Surprise does, where files are saved, and the cold-start expectation.
+  what Surprise does, where files are saved, BYOK, and the cold-start
+  expectation.
 - Genre chips (folk, pop, rock, indie, lo-fi, electronic, hip-hop, soul,
   country, jazz, classical, ambient, metal, lullaby) plus optional free-text
   style details.
@@ -87,19 +92,33 @@ on the Mac App Store (runtime-download rules).
 
 | Mode | Input | Path | Reliable? |
 |---|---|---|---|
-| `topic` *(default)* | Topic / theme / sentence | Ollama writes lyrics → ACE-Step `prompt` + `lyrics` + exact `audio_duration` + `vocal_language` + `thinking` | Yes |
+| `topic` *(default)* | Topic / theme / sentence | Chosen lyricist writes lyrics → ACE-Step `prompt` + `lyrics` + exact `audio_duration` + `vocal_language` + `thinking` | Yes |
 | `lyrics` | Lyrics with `[Verse]` / `[Chorus]` tags | Same ACE-Step path; words pass through | Yes |
 | `describe` | Topic / sentence | ACE-Step `sample_mode: true` + `sample_query` with an appended English + length hint | No — experimental |
 
 `prompt` is built from the genre preset plus optional style details, e.g.
 `gentle acoustic folk, warm vocals, fingerpicked guitar, close mic`.
 
-The topic path does **not** use ACE-Step's 5Hz LM to write lyrics. That model is
-a music planner: in testing it returned 144 s of Vietnamese and 184 s of Danish
-for the same English one-liner, ignoring both duration and language. Ollama
-writes the lyrics locally in one call; ACE-Step receives explicit lyrics, an
-exact duration, English vocals, and `thinking: true`. A 30 s request returned
-30.000 s.
+### Lyricists
+
+| Name | What | Auth |
+|---|---|---|
+| `ollama` | Local Ollama chat model; default `qwen3.5:4b`, auto-picked from `/api/tags` | None |
+| `openai-compatible` | Any `/v1/chat/completions` endpoint: OpenAI, LM Studio, llama.cpp, OpenRouter | Bearer key for cloud; optional locally |
+| `acestep` | ACE-Step's 5Hz LM via `/v1/create_sample`, for comparison only | Uses the ACE-Step server auth |
+
+By default, the topic path does **not** use ACE-Step's 5Hz LM to write lyrics.
+That model is a music planner: in testing it returned 144 s of Vietnamese and
+184 s of Danish for the same English one-liner, ignoring both duration and
+language. Ollama writes the lyrics locally in one call; ACE-Step receives
+explicit lyrics, an exact duration, English vocals, and `thinking: true`. A 30 s
+request returned 30.000 s. The ACE-Step LM is still selectable as an
+experimental lyricist for comparison.
+
+BYOK applies to the OpenAI-compatible lyricist. Keys live in
+`~/.canturia.yaml` or the environment and are sent only to the endpoint the
+user configures. The desktop Settings sheet writes them; the hosted web UI
+reads the operator's config and never exposes keys to the browser.
 
 For Surprise/describe, the language demand is put into the description itself
 ("with lyrics in English and English vocals, about N seconds long"), because
@@ -216,10 +235,17 @@ style: ""
 duration: 30
 vocal_language: en
 thinking: true
-ollama:
-  base_url: http://127.0.0.1:11434
-  model: qwen3.5:4b
-  timeout: 90
+lyricist: ollama          # ollama | openai-compatible | acestep
+lyricists:
+  ollama:
+    base_url: http://127.0.0.1:11434
+    model: qwen3.5:4b
+    timeout: 90
+  openai-compatible:
+    base_url: https://api.openai.com/v1
+    model: gpt-4o-mini
+    api_key: "${OPENAI_API_KEY}"
+    timeout: 90
 serve:
   host: 127.0.0.1
   port: 2268
@@ -231,16 +257,20 @@ Environment overrides: `CANTURIA_BASE_URL`, `CANTURIA_API_KEY`,
 `CANTURIA_USERNAME`, `CANTURIA_PASSWORD`, `CANTURIA_MODEL`,
 `CANTURIA_TIMEOUT`, `CANTURIA_POLL_INTERVAL`, `CANTURIA_GENRE`,
 `CANTURIA_DURATION`, `CANTURIA_VOCAL_LANGUAGE`, `CANTURIA_THINKING`,
-`CANTURIA_OLLAMA_URL`, `CANTURIA_OLLAMA_MODEL`, `CANTURIA_HOST`,
-`CANTURIA_PORT`, `CANTURIA_SERVE_PASSWORD`, `CANTURIA_OUT_DIR`.
+`CANTURIA_LYRICIST`, `CANTURIA_OLLAMA_URL`, `CANTURIA_OLLAMA_MODEL`,
+`CANTURIA_OPENAI_BASE_URL`, `CANTURIA_OPENAI_MODEL`,
+`CANTURIA_OPENAI_API_KEY`, `CANTURIA_HOST`, `CANTURIA_PORT`,
+`CANTURIA_SERVE_PASSWORD`, `CANTURIA_OUT_DIR`.
 
 ## 8. Architecture
 
 ```
 canturia/
   providers/acestep.py   thin ACE-Step client (submit, poll, download)
-  providers/ollama.py    local lyricist (one call, section tags)
-  core.py                modes, genre presets, duration validation, saving
+  providers/ollama.py    Ollama chat client
+  lyricists/             ollama | openai-compatible | acestep
+  lyrics_text.py         shared prompts and lyric cleanup
+  core.py                modes, lyricists, genre presets, saving
   config.py              layered config + env expansion
   cli.py                 Typer CLI
   serve.py               FastAPI app factory
@@ -257,8 +287,8 @@ tests/
 ## 9. Privacy and storage
 
 - No account, no telemetry, no logging of prompts or audio.
-- Ollama runs locally; the only lyric-writing egress is to the Ollama URL you
-  configure (localhost by default).
+- Ollama runs locally. The OpenAI-compatible lyricist sends prompts only to the
+  endpoint and key the user configures; keys are never exposed to the browser.
 - The web session gallery is in memory, capped at 50 songs, and dies with the
   process.
 - Save writes the audio plus a `<song>.json` sidecar into
@@ -281,8 +311,10 @@ tests/
    Save/Download/Again/Delete, password gate, Help sheet, tests. Published on
    PyPI.
 2. **M2 — Desktop.** Tauri shell, first-run uv runtime, Settings sheet for the
-   server URL and credentials, CI installers, landing page.
-3. **M3 — Optional depth.** Hidden/advanced controls: instrumental, vocal
+   server URL, credentials, and lyricist/BYOK, CI installers, landing page.
+3. **M3 — Lyricists and preview.** `lyricists/` providers, `canturia lyrics`,
+   `canturia compare`, web Preview lyrics → edit → Sing, 0.3.0.
+4. **M4 — Optional depth.** Hidden/advanced controls: instrumental, vocal
    language, BPM, key, time signature, inference steps, LoRA selection. Same
    "simple by default" rule as Limn.
 

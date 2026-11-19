@@ -25,11 +25,14 @@ from canturia.config import (
 from canturia.core import (
     DURATION_MAX,
     DURATION_MIN,
+    compare_lyrics,
     generate,
     health,
-    ollama_status,
+    lyricist_choices,
     save_song,
 )
+from canturia.core import lyrics as lyrics_only
+from canturia.lyricists import LyricistError
 from canturia.providers import AceStepError, OllamaError
 
 console = Console()
@@ -143,6 +146,7 @@ def _run_generate(
     username: str | None,
     password: str | None,
     timeout: float | None,
+    lyricist: str | None = None,
 ) -> None:
     cfg = _connection_options(
         base_url=base_url,
@@ -162,6 +166,7 @@ def _run_generate(
             genre=genre,
             style=style,
             duration=duration,
+            lyricist=lyricist,
             on_progress=lambda message: status.update(f"Generating… {message}"),
         )
 
@@ -280,7 +285,7 @@ def generate_cmd(
             password=password,
             timeout=timeout,
         )
-    except (ConfigurationError, AceStepError, OllamaError, ValueError) as e:
+    except (ConfigurationError, AceStepError, OllamaError, LyricistError, ValueError) as e:
         err_console.print(str(e))
         raise typer.Exit(code=1) from None
 
@@ -377,7 +382,7 @@ def describe(
             password=password,
             timeout=timeout,
         )
-    except (ConfigurationError, AceStepError, ValueError) as e:
+    except (ConfigurationError, AceStepError, LyricistError, ValueError) as e:
         err_console.print(str(e))
         raise typer.Exit(code=1) from None
 
@@ -386,7 +391,13 @@ def describe(
 def topic(
     subject: str = typer.Argument(
         ...,
-        help="A topic, theme, or sentence; Ollama writes the lyrics.",
+        help="A topic, theme, or sentence; the chosen lyricist writes the lyrics.",
+    ),
+    lyricist: str | None = typer.Option(
+        None,
+        "--lyricist",
+        help="ollama | openai-compatible | acestep (default: config).",
+        show_default=False,
     ),
     genre: str | None = typer.Option(
         None,
@@ -443,12 +454,11 @@ def topic(
         show_default=False,
     ),
 ) -> None:
-    """Write a song from a topic: Ollama writes the lyrics, ACE-Step sings.
+    """Write a song from a topic: a lyricist writes, ACE-Step sings.
 
-    This is the recommended topic path. Ollama runs locally, one call, and the
-    resulting lyrics go to ACE-Step with an exact duration and vocal language.
-    For the raw, experimental "ACE-Step invents everything" path, use
-    `canturia describe`.
+    The default lyricist is Ollama; choose another with --lyricist. The lyrics
+    go to ACE-Step with an exact duration and vocal language. For the raw,
+    experimental "ACE-Step invents everything" path, use `canturia describe`.
     """
     try:
         _run_generate(
@@ -464,8 +474,226 @@ def topic(
             username=username,
             password=password,
             timeout=timeout,
+            lyricist=lyricist,
         )
-    except (ConfigurationError, AceStepError, OllamaError, ValueError) as e:
+    except (ConfigurationError, AceStepError, OllamaError, LyricistError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+@app.command()
+def lyrics(
+    topic: str = typer.Argument(
+        ...,
+        help="A topic, theme, or sentence to write lyrics about.",
+    ),
+    lyricist: str | None = typer.Option(
+        None,
+        "--lyricist",
+        help="ollama | openai-compatible | acestep (default: config).",
+        show_default=False,
+    ),
+    genre: str | None = typer.Option(
+        None,
+        "--genre",
+        "-g",
+        help="Genre key (folk, pop, rock, indie, lofi, hiphop, …) or free text.",
+        show_default=False,
+    ),
+    style: str | None = typer.Option(
+        None,
+        "--style",
+        "-s",
+        help="Extra style details for the lyricist.",
+        show_default=False,
+    ),
+    duration: float | None = typer.Option(
+        None,
+        "--duration",
+        "-t",
+        min=DURATION_MIN,
+        max=DURATION_MAX,
+        help=f"Target length in seconds ({int(DURATION_MIN)}–{int(DURATION_MAX)}).",
+        show_default=False,
+    ),
+    out: str | None = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="Write the lyrics to a text file instead of only printing them.",
+        show_default=False,
+    ),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+    timeout: float | None = typer.Option(
+        None, "--timeout", help="Overall generation timeout in seconds.",
+        show_default=False,
+    ),
+) -> None:
+    """Write lyrics only, without generating audio.
+
+    Useful for comparing lyricists before committing to a generation:
+
+        canturia lyrics "a birthday song for grandma" --lyricist ollama
+        canturia lyrics "a birthday song for grandma" --lyricist openai-compatible
+    """
+    try:
+        cfg = _connection_options(
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+            config=config,
+            timeout=timeout,
+        )
+        settings = resolve_settings(cfg)
+        chosen_genre = genre or str(settings.get("genre") or "folk")
+        chosen_style = (
+            style if style is not None else str(settings.get("style") or "")
+        )
+        chosen_duration = (
+            duration if duration is not None else settings.get("duration") or 30
+        )
+        result = lyrics_only(
+            topic,
+            settings,
+            genre=chosen_genre,
+            style=chosen_style,
+            duration=chosen_duration,
+            lyricist=lyricist,
+        )
+        header = f"{result.provider}"
+        if result.model:
+            header += f" · {result.model}"
+        console.print(f"[dim]{header}[/dim]")
+        console.print(result.lyrics)
+        if out:
+            target = Path(out).expanduser()
+            if target.parent != Path("."):
+                target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(result.lyrics + "\n", encoding="utf-8")
+            console.print(f"Wrote: [bold green]{target}[/bold green]")
+    except (ConfigurationError, AceStepError, OllamaError, LyricistError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+@app.command()
+def compare(
+    topic: str = typer.Argument(
+        ...,
+        help="A topic, theme, or sentence to write lyrics about.",
+    ),
+    with_: list[str] | None = typer.Option(
+        None,
+        "--with",
+        "-w",
+        help="Lyricist to compare; repeatable. Defaults to ollama and acestep.",
+        show_default=False,
+    ),
+    genre: str | None = typer.Option(
+        None,
+        "--genre",
+        "-g",
+        help="Genre key (folk, pop, rock, indie, lofi, hiphop, …) or free text.",
+        show_default=False,
+    ),
+    style: str | None = typer.Option(
+        None,
+        "--style",
+        "-s",
+        help="Extra style details for the lyricists.",
+        show_default=False,
+    ),
+    duration: float | None = typer.Option(
+        None,
+        "--duration",
+        "-t",
+        min=DURATION_MIN,
+        max=DURATION_MAX,
+        help=f"Target length in seconds ({int(DURATION_MIN)}–{int(DURATION_MAX)}).",
+        show_default=False,
+    ),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+    timeout: float | None = typer.Option(
+        None, "--timeout", help="Overall generation timeout in seconds.",
+        show_default=False,
+    ),
+) -> None:
+    """Write the same topic with several lyricists and print them side by side."""
+    try:
+        cfg = _connection_options(
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+            config=config,
+            timeout=timeout,
+        )
+        settings = resolve_settings(cfg)
+        chosen_genre = genre or str(settings.get("genre") or "folk")
+        chosen_style = (
+            style if style is not None else str(settings.get("style") or "")
+        )
+        chosen_duration = (
+            duration if duration is not None else settings.get("duration") or 30
+        )
+        names = with_ or ["ollama", "acestep"]
+        results = compare_lyrics(
+            topic,
+            settings,
+            names,
+            genre=chosen_genre,
+            style=chosen_style,
+            duration=chosen_duration,
+        )
+        for result in results:
+            title = result.provider
+            if result.model:
+                title += f" · {result.model}"
+            console.rule(title)
+            if result.error:
+                console.print(f"[red]{result.error}[/red]")
+            else:
+                console.print(result.lyrics)
+    except (ConfigurationError, AceStepError, OllamaError, LyricistError, ValueError) as e:
         err_console.print(str(e))
         raise typer.Exit(code=1) from None
 
@@ -503,34 +731,39 @@ def health_cmd(
         )
         settings = resolve_settings(cfg)
         data = health(settings)
-        ollama = ollama_status(settings)
+        choices = lyricist_choices(settings)
         model = data.get("loaded_model") or "—"
         loaded = "loaded" if data.get("models_initialized") else "not loaded"
+        selected = str(settings.get("lyricist") or "ollama")
         table = Table(show_header=False, box=None)
         table.add_row("Server", str(settings["base_url"]))
         table.add_row("Status", str(data.get("status") or "unknown"))
         table.add_row("Model", f"{model} ({loaded})")
-        if ollama["ok"]:
-            table.add_row("Lyrics writer", f"Ollama ({ollama['model']})")
-        else:
-            table.add_row("Lyrics writer", "Ollama offline")
+        table.add_row("Default lyricist", selected)
+        for choice in choices:
+            status = "on" if choice["available"] else "off"
+            detail = choice["model"] or choice["error"] or ""
+            table.add_row(f"  {choice['label']}", f"{status} · {detail}")
         table.add_row(
             "ACE-Step LM",
             "on" if data.get("llm_initialized") else "off",
         )
         console.print(table)
-        if not ollama["ok"]:
+        chosen = next(
+            (choice for choice in choices if choice["name"] == selected), None
+        )
+        if chosen and not chosen["available"]:
             console.print(
-                "[yellow]Ollama is not reachable; the topic box will not work. "
-                "Start 'ollama serve' and pull a model, or paste lyrics. "
-                "See the in-app Help for details.[/yellow]"
+                f"[yellow]The default lyricist ({selected}) is unavailable: "
+                f"{chosen['error'] or 'not configured'}.[/yellow]"
             )
         if not data.get("llm_initialized"):
             console.print(
-                "[yellow]ACE-Step's own LM is off; 'describe' is unavailable. "
-                "Set resident: true in puente.yml to enable it.[/yellow]"
+                "[yellow]ACE-Step's own LM is off; 'describe' and the "
+                "ACE-Step lyricist are unavailable. Set resident: true in "
+                "puente.yml to enable them.[/yellow]"
             )
-    except (ConfigurationError, AceStepError, OllamaError, ValueError) as e:
+    except (ConfigurationError, AceStepError, OllamaError, LyricistError, ValueError) as e:
         err_console.print(str(e))
         raise typer.Exit(code=1) from None
 

@@ -18,6 +18,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -40,6 +41,21 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "duration": 30,
     "vocal_language": "en",
     "thinking": True,
+    "lyricist": "ollama",
+    "lyricists": {
+        "ollama": {
+            "base_url": "http://127.0.0.1:11434",
+            "model": None,
+            "timeout": 90,
+        },
+        "openai-compatible": {
+            "base_url": "https://api.openai.com/v1",
+            "model": None,
+            "api_key": None,
+            "timeout": 90,
+        },
+    },
+    # Legacy location, merged into lyricists.ollama for older configs.
     "ollama": {
         "base_url": "http://127.0.0.1:11434",
         "model": None,
@@ -67,12 +83,20 @@ _ENV_OVERRIDES: dict[str, str] = {
     "duration": "CANTURIA_DURATION",
     "vocal_language": "CANTURIA_VOCAL_LANGUAGE",
     "thinking": "CANTURIA_THINKING",
+    "lyricist": "CANTURIA_LYRICIST",
 }
 
 _OLLAMA_ENV_OVERRIDES: dict[str, str] = {
     "base_url": "CANTURIA_OLLAMA_URL",
     "model": "CANTURIA_OLLAMA_MODEL",
     "timeout": "CANTURIA_OLLAMA_TIMEOUT",
+}
+
+_OPENAI_ENV_OVERRIDES: dict[str, str] = {
+    "base_url": "CANTURIA_OPENAI_BASE_URL",
+    "model": "CANTURIA_OPENAI_MODEL",
+    "api_key": "CANTURIA_OPENAI_API_KEY",
+    "timeout": "CANTURIA_OPENAI_TIMEOUT",
 }
 
 _SERVE_ENV_OVERRIDES: dict[str, str] = {
@@ -236,29 +260,101 @@ def resolve_settings(config: dict[str, Any]) -> dict[str, Any]:
         settings.get("thinking"), "thinking", True
     )
     settings["vocal_language"] = str(settings.get("vocal_language") or "en")
+    settings["lyricist"] = str(settings.get("lyricist") or "ollama")
+    if not isinstance(settings.get("lyricists"), dict):
+        settings["lyricists"] = {}
     ollama = settings.get("ollama")
     if not isinstance(ollama, dict):
         settings["ollama"] = dict(DEFAULT_CONFIG["ollama"])
     return settings
 
 
-def resolve_ollama_settings(config: dict[str, Any]) -> dict[str, Any]:
-    """Effective local lyricist settings (Ollama)."""
-    ollama = dict(DEFAULT_CONFIG["ollama"])
-    configured = config.get("ollama")
-    if isinstance(configured, dict):
-        ollama = merge_configs(ollama, configured)
-    for key, env_name in _OLLAMA_ENV_OVERRIDES.items():
-        value = _env_value(env_name)
-        if value is not None:
-            ollama[key] = value
+def _lyricist_block(config: dict[str, Any], name: str) -> dict[str, Any]:
+    blocks = config.get("lyricists")
+    if isinstance(blocks, dict) and isinstance(blocks.get(name), dict):
+        return blocks[name]
+    return {}
 
-    base_url = ollama.get("base_url") or "http://127.0.0.1:11434"
-    ollama["base_url"] = normalize_base_url(str(base_url))
-    ollama["timeout"] = _as_float(ollama.get("timeout"), "ollama.timeout", 90.0)
-    model = str(ollama.get("model") or "").strip()
-    ollama["model"] = model or None
-    return ollama
+
+def resolve_lyricist_settings(
+    config: dict[str, Any], name: str
+) -> dict[str, Any]:
+    """Effective settings for one lyricist provider."""
+    if name == "ollama":
+        settings = dict(DEFAULT_CONFIG["lyricists"]["ollama"])
+        legacy = config.get("ollama")
+        if isinstance(legacy, dict):
+            settings = merge_configs(settings, legacy)
+        settings = merge_configs(settings, _lyricist_block(config, name))
+        for key, env_name in _OLLAMA_ENV_OVERRIDES.items():
+            value = _env_value(env_name)
+            if value is not None:
+                settings[key] = value
+        settings["base_url"] = normalize_base_url(
+            str(settings.get("base_url") or "http://127.0.0.1:11434")
+        )
+        settings["timeout"] = _as_float(
+            settings.get("timeout"), "lyricists.ollama.timeout", 90.0
+        )
+        model = str(settings.get("model") or "").strip()
+        settings["model"] = model or None
+        settings["name"] = "ollama"
+        return settings
+
+    if name == "openai-compatible":
+        settings = dict(DEFAULT_CONFIG["lyricists"]["openai-compatible"])
+        settings = merge_configs(settings, _lyricist_block(config, name))
+        for key, env_name in _OPENAI_ENV_OVERRIDES.items():
+            value = _env_value(env_name)
+            if value is not None:
+                settings[key] = value
+        settings["base_url"] = normalize_base_url(
+            str(settings.get("base_url") or "https://api.openai.com/v1")
+        )
+        parsed = urlparse(settings["base_url"])
+        if not parsed.path or parsed.path == "/":
+            settings["base_url"] = settings["base_url"].rstrip("/") + "/v1"
+        settings["timeout"] = _as_float(
+            settings.get("timeout"),
+            "lyricists.openai-compatible.timeout",
+            90.0,
+        )
+        model = str(settings.get("model") or "").strip()
+        settings["model"] = model or None
+        settings["api_key"] = settings.get("api_key") or None
+        settings["name"] = "openai-compatible"
+        return settings
+
+    if name == "acestep":
+        base_url = config.get("base_url")
+        if not base_url:
+            raise ConfigurationError(
+                "ACE-Step base_url is not configured; the acestep lyricist "
+                "uses the same server as generation."
+            )
+        return {
+            "name": "acestep",
+            "base_url": normalize_base_url(str(base_url)),
+            "api_key": config.get("api_key"),
+            "username": config.get("username"),
+            "password": config.get("password"),
+            "timeout": _as_float(config.get("timeout"), "timeout", 180.0),
+            "request_timeout": _as_float(
+                config.get("request_timeout"), "request_timeout", 120.0
+            ),
+            "poll_interval": _as_float(
+                config.get("poll_interval"), "poll_interval", 2.0
+            ),
+        }
+
+    raise ConfigurationError(
+        f"Unknown lyricist {name!r}; choose ollama, openai-compatible, or acestep."
+    )
+
+
+def resolve_ollama_settings(config: dict[str, Any]) -> dict[str, Any]:
+    """Legacy name for the Ollama lyricist settings."""
+    return resolve_lyricist_settings(config, "ollama")
 
 
 def resolve_serve_settings(config: dict[str, Any]) -> dict[str, Any]:
@@ -311,14 +407,26 @@ genre: folk
 style: ""
 duration: 30
 
-# The local lyricist used by the topic box. Ollama writes the lyrics on this
-# machine, then ACE-Step sings them. Pull a chat model first, e.g.
-#   ollama pull qwen3.5:4b
-# Leave model empty to auto-pick a sensible chat model from /api/tags.
-ollama:
-  base_url: http://127.0.0.1:11434
-  model: qwen3.5:4b
-  timeout: 90
+# The lyricist used by the topic box and the web "Preview lyrics" button.
+# ollama | openai-compatible | acestep (experimental)
+lyricist: ollama
+
+lyricists:
+  ollama:
+    base_url: http://127.0.0.1:11434
+    model: qwen3.5:4b      # empty = auto-pick from /api/tags
+    timeout: 90
+
+  # Bring your own key. Works with OpenAI, LM Studio, llama.cpp, OpenRouter,
+  # and any other /v1/chat/completions endpoint.
+  openai-compatible:
+    base_url: https://api.openai.com/v1
+    model: gpt-4o-mini
+    api_key: "${OPENAI_API_KEY}"
+    timeout: 90
+
+  # ACE-Step's own LM, for comparison only; it often returns [Instrumental].
+  # acestep: {}
 
 # Fixed for the family app; still honoured exactly on the lyrics path.
 vocal_language: en

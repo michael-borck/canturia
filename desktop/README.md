@@ -11,8 +11,9 @@ the installer stays small: no bundled browser engine, no 1 GB Python bundle.
 2. The shell runs `canturia serve` on a random localhost port as a sidecar
    (killed on exit) and shows the web UI in the window.
 3. **Settings** (shown on first run, and from the header) is the BYO-server
-   screen: server URL, optional Bearer token, optional Basic username/password
-   → written to `~/.canturia.yaml` (chmod 600), the same config the CLI uses.
+   screen: server URL, optional Bearer token, optional Basic username/password,
+   and the lyricist choice (Ollama, OpenAI-compatible BYOK, or ACE-Step LM) →
+   written to `~/.canturia.yaml` (chmod 600), the same config the CLI uses.
    Saves land in `Music/Canturia`.
 
 Privacy: no account, no telemetry, no bundled cloud — the only egress is the
@@ -26,7 +27,7 @@ cd desktop
 cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.2.2` from PyPI. To use the local source
+The sidecar installs `canturia[serve]==0.3.0` from PyPI. To use the local source
 instead, set `CANTURIA_DEV_PATH="/Volumes/Crucial X9/Projects/song-gen"`; the
 first run downloads `uv` if needed, then installs the editable package. Delete
 the app-data `runtime/canturia-version` marker to force a reinstall after

@@ -50,10 +50,11 @@
   }
   label { display: block; font-size: .8rem; color: var(--muted); margin: .8rem 0 .25rem; }
   label:first-child { margin-top: 0; }
-  input {
+  input, select {
     width: 100%; font: inherit; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 7px; padding: .45rem .6rem;
   }
+  .section-title { font-size: 1.05rem; margin: 1.5rem 0 .2rem; }
   .actions { display: flex; gap: .6rem; margin-top: 1.1rem; align-items: center; }
   .primary {
     font: inherit; font-weight: 600; border: 0; border-radius: 8px;
@@ -102,6 +103,32 @@
 
           <label for="password">Basic password</label>
           <input id="password" type="password" placeholder="with the username above">
+
+          <h2 class="section-title">Lyricist</h2>
+          <label for="lyricist">Who writes the lyrics?</label>
+          <select id="lyricist">
+            <option value="ollama">Ollama (local)</option>
+            <option value="openai-compatible">OpenAI-compatible (BYOK)</option>
+            <option value="acestep">ACE-Step LM (experimental)</option>
+          </select>
+
+          <div id="ollama-fields">
+            <label for="ollama_url">Ollama URL</label>
+            <input id="ollama_url" placeholder="http://127.0.0.1:11434">
+            <label for="ollama_model">Ollama model</label>
+            <input id="ollama_model" placeholder="qwen3.5:4b">
+          </div>
+
+          <div id="openai-fields" class="hidden">
+            <label for="openai_url">Base URL</label>
+            <input id="openai_url" placeholder="https://api.openai.com/v1">
+            <label for="openai_model">Model</label>
+            <input id="openai_model" placeholder="gpt-4o-mini">
+            <label for="openai_key">API key</label>
+            <input id="openai_key" type="password" placeholder="your key">
+          </div>
+
+          <p class="note" id="lyricist-note"></p>
 
           <div class="actions">
             <button class="primary" id="btn-save">Save &amp; start</button>
@@ -159,8 +186,33 @@ async function loadSettingsForm() {
   $("api_key").value = settings.api_key || "";
   $("username").value = settings.username || "";
   $("password").value = settings.password || "";
+  $("lyricist").value = settings.lyricist || "ollama";
+  $("ollama_url").value = settings.ollama_url || "";
+  $("ollama_model").value = settings.ollama_model || "";
+  $("openai_url").value = settings.openai_url || "";
+  $("openai_model").value = settings.openai_model || "";
+  $("openai_key").value = settings.openai_key || "";
+  syncLyricistFields();
   return settings;
 }
+
+function syncLyricistFields() {
+  const choice = $("lyricist").value;
+  $("ollama-fields").classList.toggle("hidden", choice !== "ollama");
+  $("openai-fields").classList.toggle("hidden", choice !== "openai-compatible");
+  if (choice === "ollama") {
+    $("lyricist-note").textContent =
+      "Ollama runs locally and needs no key. Pull a model first, e.g. ollama pull qwen3.5:4b.";
+  } else if (choice === "openai-compatible") {
+    $("lyricist-note").textContent =
+      "Bring your own key. It is saved to ~/.canturia.yaml (chmod 600) and sent only to the endpoint above.";
+  } else {
+    $("lyricist-note").textContent =
+      "ACE-Step's own LM, for comparison only. It is experimental and often returns [Instrumental].";
+  }
+}
+
+$("lyricist").addEventListener("change", syncLyricistFields);
 
 async function boot(update) {
   if (!settingsOpen) showBoot();
@@ -185,6 +237,12 @@ $("btn-save").onclick = async () => {
         api_key: $("api_key").value.trim(),
         username: $("username").value.trim(),
         password: $("password").value,
+        lyricist: $("lyricist").value,
+        ollama_url: $("ollama_url").value.trim(),
+        ollama_model: $("ollama_model").value.trim(),
+        openai_url: $("openai_url").value.trim(),
+        openai_model: $("openai_model").value.trim(),
+        openai_key: $("openai_key").value.trim(),
       },
     });
     settingsOpen = false;

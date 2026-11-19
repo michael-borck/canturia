@@ -10,6 +10,7 @@ from canturia.config import (
     load_config,
     merge_configs,
     normalize_base_url,
+    resolve_lyricist_settings,
     resolve_ollama_settings,
     resolve_serve_settings,
     resolve_settings,
@@ -103,6 +104,34 @@ def test_resolve_ollama_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ollama["base_url"] == "http://localhost:11434"
     assert ollama["model"] == "gemma3:4b"
     assert ollama["timeout"] == 30.0
+
+
+def test_resolve_openai_lyricist(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CANTURIA_OPENAI_MODEL", "gpt-test")
+    settings = resolve_lyricist_settings(
+        {
+            "lyricists": {
+                "openai-compatible": {
+                    "base_url": "https://api.openai.com",
+                    "api_key": "secret",
+                }
+            }
+        },
+        "openai-compatible",
+    )
+    assert settings["base_url"] == "https://api.openai.com/v1"
+    assert settings["model"] == "gpt-test"
+    assert settings["api_key"] == "secret"
+
+
+def test_resolve_acestep_lyricist() -> None:
+    settings = resolve_lyricist_settings(
+        {"base_url": "http://ace:8002", "api_key": "tok"},
+        "acestep",
+    )
+    assert settings["base_url"] == "http://ace:8002"
+    assert settings["api_key"] == "tok"
+    assert settings["name"] == "acestep"
 
 
 def test_resolve_serve_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

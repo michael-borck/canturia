@@ -9,12 +9,14 @@ from canturia.core import (
     Generation,
     audio_extension,
     build_request,
+    compare_lyrics,
     generate,
     genre_prompt,
     save_song,
     slugify,
     validate_duration,
 )
+from canturia.lyricists import LyricResult
 from canturia.providers import SongRequest, SongResult
 
 
@@ -168,8 +170,12 @@ def test_topic_generate_uses_ollama_lyrics(monkeypatch: pytest.MonkeyPatch) -> N
             ]
 
     monkeypatch.setattr(
-        "canturia.core.write_lyrics",
-        lambda topic, settings, **kwargs: "[Verse]\nwritten by ollama",
+        "canturia.core.lyrics",
+        lambda topic, settings, **kwargs: LyricResult(
+            lyrics="[Verse]\nwritten by ollama",
+            provider="ollama",
+            model="qwen3.5:4b",
+        ),
     )
     monkeypatch.setattr(
         "canturia.core.client_from_settings", lambda settings: FakeClient()
@@ -190,6 +196,34 @@ def test_topic_generate_uses_ollama_lyrics(monkeypatch: pytest.MonkeyPatch) -> N
     assert captured[0].lyrics == "[Verse]\nwritten by ollama"
     assert captured[0].thinking is True
     assert captured[0].vocal_language == "en"
+    assert result.lyricist == "ollama"
+    assert result.lyricist_model == "qwen3.5:4b"
+
+
+def test_compare_lyrics_keeps_partial_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake(topic: str, settings: dict, *, lyricist=None, **kwargs):
+        if lyricist == "acestep":
+            raise RuntimeError("LM off")
+        return LyricResult(
+            lyrics="[Verse]\nwritten",
+            provider=lyricist or "ollama",
+            model="test-model",
+        )
+
+    monkeypatch.setattr("canturia.core.lyrics", fake)
+    results = compare_lyrics(
+        "rain",
+        {},
+        ["ollama", "acestep"],
+        genre="folk",
+        style="",
+        duration=30,
+    )
+    assert results[0].lyrics == "[Verse]\nwritten"
+    assert results[0].provider == "ollama"
+    assert results[1].error == "LM off"
 
 
 def test_generate_builds_a_request(monkeypatch: pytest.MonkeyPatch) -> None:

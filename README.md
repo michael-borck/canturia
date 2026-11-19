@@ -29,6 +29,18 @@ writes lyrics.
   5Hz LM is a music planner, not a lyricist, so length and language can wander.
   Use it for a happy accident.
 
+The topic path can use one of three **lyricists**:
+
+- **Ollama** — local, no key, the default.
+- **OpenAI-compatible** — bring your own key: OpenAI, LM Studio, llama.cpp,
+  OpenRouter, or any `/v1/chat/completions` endpoint.
+- **ACE-Step LM** — experimental, for comparison; it often returns
+  `[Instrumental]`.
+
+The web UI has a **Preview lyrics** button: write the words first, edit them,
+then **Sing these lyrics** with an exact length. The CLI equivalents are
+`canturia lyrics` and `canturia compare`.
+
 All paths take a genre chip or free-text genre, optional style details, and a
 length from 10 to 600 seconds (30/45/60 are the fast presets).
 
@@ -71,11 +83,24 @@ poll_interval: 2
 genre: folk
 duration: 30
 
-# Local lyricist for the topic box.
-ollama:
-  base_url: http://127.0.0.1:11434
-  model: qwen3.5:4b      # empty = auto-pick from /api/tags
-  timeout: 90
+# Who writes the lyrics: ollama | openai-compatible | acestep
+lyricist: ollama
+
+lyricists:
+  ollama:
+    base_url: http://127.0.0.1:11434
+    model: qwen3.5:4b      # empty = auto-pick from /api/tags
+    timeout: 90
+
+  # Bring your own key. Works with OpenAI, LM Studio, llama.cpp, OpenRouter, …
+  openai-compatible:
+    base_url: https://api.openai.com/v1
+    model: gpt-4o-mini
+    api_key: "${OPENAI_API_KEY}"
+    timeout: 90
+
+  # ACE-Step's own LM, for comparison only; often returns [Instrumental].
+  # acestep: {}
 
 vocal_language: en
 thinking: true           # better audio/metadata; resident: true on the server
@@ -89,15 +114,25 @@ serve:
 
 Secrets can be referenced as `${VAR}` so no plaintext keys live in the file.
 Environment overrides include `CANTURIA_BASE_URL`, `CANTURIA_API_KEY`,
-`CANTURIA_USERNAME`, `CANTURIA_PASSWORD`, `CANTURIA_OLLAMA_URL`,
-`CANTURIA_OLLAMA_MODEL`, `CANTURIA_SERVE_PASSWORD`, and
-`CANTURIA_OUT_DIR`.
+`CANTURIA_USERNAME`, `CANTURIA_PASSWORD`, `CANTURIA_LYRICIST`,
+`CANTURIA_OLLAMA_URL`, `CANTURIA_OLLAMA_MODEL`, `CANTURIA_OPENAI_BASE_URL`,
+`CANTURIA_OPENAI_MODEL`, `CANTURIA_OPENAI_API_KEY`,
+`CANTURIA_SERVE_PASSWORD`, and `CANTURIA_OUT_DIR`.
 
 ## CLI
 
 ```bash
-# Topic mode: Ollama writes the lyrics (the reliable path)
+# Topic mode: the chosen lyricist writes, then ACE-Step sings
 canturia topic "a warm song about growing up by the sea" -g folk -t 30
+canturia topic "a warm song about growing up by the sea" -g folk -t 30 \
+  --lyricist openai-compatible
+
+# Lyrics only, no audio
+canturia lyrics "a birthday song for grandma" -g folk -t 30 --lyricist ollama
+
+# Compare lyricists side by side
+canturia compare "a birthday song for grandma" -g folk -t 30 \
+  --with ollama --with acestep
 
 # Your own lyrics (the default command)
 canturia "[Verse]\nMorning light across the floor\n[Chorus]\nGrow a little every day" \
@@ -125,11 +160,12 @@ genre, style, prompt, lyrics, duration, vocal language, and server metadata.
 canturia serve --password "something" --host 0.0.0.0
 ```
 
-The page has **About a topic** and **Write lyrics** tabs, a **Surprise me**
-button, genre chips, 30/45/60 s presets plus a custom field, style details, a
-**Help** sheet, and inline hints. Songs appear in a session gallery with an
-audio player, Save, Download, Again, and Delete. The gallery is in memory only;
-Save writes into `~/Music/Canturia` (or `serve.out_dir`).
+The page has **About a topic** and **Write lyrics** tabs, a lyricist selector,
+a **Preview lyrics** panel (edit before singing), a **Surprise me** button,
+genre chips, 30/45/60 s presets plus a custom field, style details, a **Help**
+sheet, and inline hints. Songs appear in a session gallery with an audio player,
+Save, Download, Again, and Delete. The gallery is in memory only; Save writes
+into `~/Music/Canturia` (or `serve.out_dir`).
 
 When `serve` binds beyond localhost without a password, it generates one and
 prints it. The upstream ACE-Step credentials are separate: use `api_key` for a
@@ -152,8 +188,9 @@ English across four runs, and 30–45 s requests came back at 144–188 s. Treat
 Surprise as a novelty, not a contract.
 
 `resident: true` still earns its VRAM: `thinking: true` improves audio and
-metadata backfill, and the raw Surprise path stays available. The server's own
-lyrics writer is never used by the topic box.
+metadata backfill, the raw Surprise path stays available, and the ACE-Step LM
+can be selected as an experimental lyricist for comparison. The default topic
+path never uses it to write lyrics.
 
 ## ACE-Step notes
 
@@ -180,7 +217,7 @@ cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.2.2` from PyPI. For local Python
+The sidecar installs `canturia[serve]==0.3.0` from PyPI. For local Python
 changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
 instead.
 
@@ -208,8 +245,9 @@ uv run --no-sync pytest
 ## Roadmap
 
 - **M1** — Python core, CLI, web UI (done).
-- **M2** — Tauri desktop shell with a Settings sheet for the server URL and
-  credentials, uv-bootstrapped sidecar, installers in CI (done; PyPI 0.2.0).
+- **M2** — Tauri desktop shell with a Settings sheet for the server URL,
+  credentials, and lyricist/BYOK, uv-bootstrapped sidecar, installers in CI
+  (done; PyPI 0.3.0).
 - **M3** — Optional advanced controls, documented but hidden by default: BPM,
   key, time signature, instrumental, vocal language, LoRA selection.
 

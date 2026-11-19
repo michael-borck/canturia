@@ -31,11 +31,14 @@ from canturia.core import (
     client_from_settings,
     generate,
     genre_options,
+    lyricist_choices,
     ollama_status,
     save_song,
     slugify,
     unique_path,
 )
+from canturia.core import lyrics as write_lyrics_only
+from canturia.lyricists.base import LyricResult
 from canturia.providers import AceStepError, SongResult
 
 SESSION_COOKIE = "canturia_session"
@@ -69,6 +72,8 @@ class Song:
             "text": self.generation.text,
             "prompt": self.song.prompt,
             "lyrics": self.song.lyrics,
+            "lyricist": self.generation.lyricist,
+            "lyricist_model": self.generation.lyricist_model,
             "metas": self.song.metas,
             "created": self.created,
         }
@@ -83,6 +88,7 @@ class Job:
     song_ids: list[str] = field(default_factory=list)
     error: str | None = None
     request: dict[str, Any] = field(default_factory=dict)
+    lyrics: dict[str, Any] | None = None
 
 
 class GeneratePayload(BaseModel):
@@ -91,6 +97,15 @@ class GeneratePayload(BaseModel):
     genre: str = "folk"
     style: str | None = None
     duration: float = Field(default=30, ge=10, le=600)
+    lyricist: str | None = None
+
+
+class LyricsPayload(BaseModel):
+    topic: str = Field(min_length=1)
+    genre: str = "folk"
+    style: str | None = None
+    duration: float = Field(default=30, ge=10, le=600)
+    lyricist: str | None = None
 
 
 class LoginPayload(BaseModel):
@@ -101,7 +116,7 @@ class SavePayload(BaseModel):
     filename: str | None = None
 
 
-def _payload_dict(payload: GeneratePayload) -> dict[str, Any]:
+def _payload_dict(payload: BaseModel) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         return payload.model_dump()
     return payload.dict()
@@ -251,6 +266,9 @@ def create_app(
     generate_fn: Callable[..., Generation] | None = None,
     client_factory: Callable[[], Any] | None = None,
     ollama_status_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    lyrics_fn: Callable[..., LyricResult] | None = None,
+    lyricist_options_fn: Callable[[dict[str, Any]], list[dict[str, Any]]]
+    | None = None,
 ) -> FastAPI:
     """Build the Canturía web app around a loaded config."""
     settings = resolve_settings(config)
@@ -262,6 +280,8 @@ def create_app(
     run_generation = generate_fn or generate
     make_client = client_factory or (lambda: client_from_settings(settings))
     get_ollama = ollama_status_fn or ollama_status
+    run_lyrics = lyrics_fn or write_lyrics_only
+    get_lyricists = lyricist_options_fn or lyricist_choices
 
     songs: dict[str, Song] = {}
     jobs: dict[str, Job] = {}
@@ -326,6 +346,7 @@ def create_app(
                 genre=payload.genre,
                 style=payload.style,
                 duration=payload.duration,
+                lyricist=payload.lyricist,
                 on_progress=lambda message: set_progress(job_id, message),
             )
             requested = _payload_dict(payload)
@@ -367,6 +388,59 @@ def create_app(
             evict_jobs_locked()
         threading.Thread(
             target=run_job, args=(job_id, payload), daemon=True
+        ).start()
+        return job_id
+
+    def run_lyrics_job(job_id: str, payload: LyricsPayload) -> None:
+        with lock:
+            job = jobs.get(job_id)
+            if job:
+                job.status = "running"
+                job.progress = "writing lyrics…"
+        try:
+            result = run_lyrics(
+                payload.topic,
+                settings,
+                genre=payload.genre,
+                style=payload.style,
+                duration=payload.duration,
+                lyricist=payload.lyricist,
+                on_progress=lambda message: set_progress(job_id, message),
+            )
+            with lock:
+                job = jobs.get(job_id)
+                if job is None:
+                    return
+                job.lyrics = {
+                    "lyrics": result.lyrics,
+                    "provider": result.provider,
+                    "model": result.model,
+                    "caption": result.caption,
+                    "error": result.error,
+                }
+                job.status = "done"
+                job.progress = "done"
+        except Exception as exc:
+            with lock:
+                job = jobs.get(job_id)
+                if job:
+                    job.status = "failed"
+                    job.error = str(exc)
+                    job.progress = ""
+
+    def start_lyrics_job(payload: LyricsPayload) -> str:
+        job_id = secrets.token_urlsafe(8)
+        with lock:
+            jobs[job_id] = Job(
+                id=job_id,
+                status="queued",
+                progress="queued",
+                created=time.time(),
+                request=_payload_dict(payload),
+            )
+            evict_jobs_locked()
+        threading.Thread(
+            target=run_lyrics_job, args=(job_id, payload), daemon=True
         ).start()
         return job_id
 
@@ -432,8 +506,20 @@ def create_app(
             "vocal_language": settings.get("vocal_language") or "en",
             "thinking": bool(settings.get("thinking", True)),
             "default_mode": "topic",
+            "lyricist": settings.get("lyricist") or "ollama",
             "ollama_model": (settings.get("ollama") or {}).get("model"),
         }
+
+    @app.get("/api/lyricists", dependencies=[Depends(require_auth)])
+    def api_lyricists() -> dict[str, Any]:
+        return {
+            "default": settings.get("lyricist") or "ollama",
+            "lyricists": get_lyricists(settings),
+        }
+
+    @app.post("/api/lyrics", dependencies=[Depends(require_auth)])
+    def api_lyrics(payload: LyricsPayload) -> dict[str, Any]:
+        return {"job_id": start_lyrics_job(payload)}
 
     @app.get("/api/ollama", dependencies=[Depends(require_auth)])
     def api_ollama() -> dict[str, Any]:
@@ -474,6 +560,7 @@ def create_app(
                 "progress": job.progress,
                 "error": job.error,
                 "songs": metas,
+                "lyrics": job.lyrics,
             }
 
     @app.get("/api/songs", dependencies=[Depends(require_auth)])

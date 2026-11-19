@@ -96,9 +96,24 @@
     border: 1px solid var(--line); border-radius: 7px; padding: .25rem .45rem; width: 5rem;
   }
   .style-row { display: flex; align-items: center; gap: .6rem; }
-  .style-row input {
+  .style-row input, .style-row select {
     flex: 1; font: inherit; font-size: .86rem; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 7px; padding: .35rem .55rem;
+  }
+  .lyricist-note { color: var(--muted); font-size: .75rem; }
+  .lyrics-panel {
+    margin-top: 1rem; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 1rem;
+  }
+  .lyrics-head {
+    display: flex; align-items: baseline; gap: .6rem; margin-bottom: .5rem;
+  }
+  .lyrics-head strong { font-size: .9rem; }
+  .lyrics-head .linkish { margin-left: auto; }
+  .lyrics-edit {
+    width: 100%; min-height: 10rem; resize: vertical; font: inherit;
+    color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: .6rem .7rem; outline: none;
   }
   .bar { display: flex; align-items: center; gap: .6rem; margin-top: .8rem; flex-wrap: wrap; }
   button { font: inherit; }
@@ -213,6 +228,13 @@
         <label>Genre</label>
         <div class="chips" id="genres"></div>
       </div>
+      <div class="control">
+        <label>Lyricist</label>
+        <div class="style-row">
+          <select id="lyricist" aria-label="Lyricist"></select>
+          <span class="lyricist-note" id="lyricist-note"></span>
+        </div>
+      </div>
       <div class="control length">
         <label>Length</label>
         <div class="chips" id="durations"></div>
@@ -230,11 +252,26 @@
 
     <div class="bar">
       <button class="primary" id="go" type="button">Generate</button>
+      <button class="secondary" id="preview" type="button"
+              title="Write lyrics only, then edit them before singing.">Preview lyrics</button>
       <button class="secondary" id="surprise" type="button"
               title="Let ACE-Step invent the lyrics. Canturía asks for English, but length and language are best-effort.">
         Surprise me
       </button>
       <span class="hint">⌘⏎ / Ctrl⏎ to generate</span>
+    </div>
+  </div>
+
+  <div class="lyrics-panel" id="lyrics-panel" hidden>
+    <div class="lyrics-head">
+      <strong id="lyrics-provider">Lyrics preview</strong>
+      <button class="linkish" id="lyrics-close" type="button">Close</button>
+    </div>
+    <textarea class="lyrics-edit" id="lyrics-edit"
+      placeholder="Lyrics will appear here. Edit them, then sing."></textarea>
+    <div class="bar">
+      <button class="primary" id="sing" type="button">Sing these lyrics</button>
+      <span class="hint">Edits go to ACE-Step with the exact length.</span>
     </div>
   </div>
 
@@ -246,9 +283,20 @@
   <dialog id="help-dialog">
     <h2>How Canturía works</h2>
     <h3>About a topic</h3>
-    <p>Type a theme or a sentence. Canturía asks Ollama on this machine to write
+    <p>Type a theme or a sentence. Canturía asks the chosen lyricist to write
     the lyrics, then sends them to ACE-Step with your genre, length, and English
     vocals. The length is honoured exactly.</p>
+    <h3>Preview lyrics</h3>
+    <p>Write the words first, without generating audio. Edit them, then press
+    <strong>Sing these lyrics</strong> to send them to ACE-Step. This is the
+    easiest way to compare lyricists before committing to a song.</p>
+    <h3>Lyricists</h3>
+    <p><strong>Ollama</strong> runs locally. <strong>OpenAI-compatible</strong>
+    is bring-your-own-key: OpenAI, LM Studio, llama.cpp, OpenRouter, and other
+    <code>/v1/chat/completions</code> endpoints. Keys live in
+    <code>~/.canturia.yaml</code> and are only sent to the endpoint you
+    configure. <strong>ACE-Step LM</strong> is experimental and often returns
+    <code>[Instrumental]</code>; use it for comparison, not as the default.</p>
     <h3>Write lyrics</h3>
     <p>Paste your own words. <code>[Verse]</code> and <code>[Chorus]</code> tags
     help the singer. Your lyrics go straight to ACE-Step; length is honoured
@@ -280,6 +328,10 @@ const text = $("text"), go = $("go"), surprise = $("surprise"), notice = $("noti
 const durationInput = $("duration"), styleInput = $("style");
 const pill = $("server-pill"), lock = $("lock");
 const modeHint = $("mode-hint"), helpDialog = $("help-dialog");
+const lyricistSelect = $("lyricist"), lyricistNote = $("lyricist-note");
+const previewBtn = $("preview"), lyricsPanel = $("lyrics-panel");
+const lyricsEdit = $("lyrics-edit"), lyricsProvider = $("lyrics-provider");
+const singBtn = $("sing"), lyricsClose = $("lyrics-close");
 
 const SURPRISE_PROMPTS = [
   "a cheerful song about a robot learning to dance",
@@ -294,9 +346,9 @@ const state = {
   duration: 30,
   config: null,
   ace: null,
-  ollama: null,
+  lyricists: [],
+  lyricist: "ollama",
   aceOk: null,
-  ollamaOk: null,
   llm: null,
   checked: false,
   busy: false,
@@ -353,9 +405,26 @@ function firstLine(value) {
   return line || "Untitled song";
 }
 
+function selectedLyricist() {
+  return state.lyricists.find((item) => item.name === state.lyricist) || null;
+}
+
+function lyricistAvailable() {
+  const item = selectedLyricist();
+  return Boolean(item && item.available);
+}
+
+function lyricistLabel() {
+  const item = selectedLyricist();
+  if (!item) return "the chosen lyricist";
+  return item.model ? `${item.label} (${item.model})` : item.label;
+}
+
 function updateNotice() {
-  if (state.mode === "topic" && state.ollamaOk === false) {
-    showNotice("Ollama is not reachable, so the topic box cannot write lyrics. Start Ollama and pull a model, or use Write lyrics.");
+  if (state.mode === "topic" && state.checked && !lyricistAvailable()) {
+    const item = selectedLyricist();
+    const reason = item?.error || "not configured";
+    showNotice(`The selected lyricist is unavailable: ${reason} Pick another, configure it in ~/.canturia.yaml, or use Write lyrics.`);
     return;
   }
   if (state.checked && state.aceOk === false) {
@@ -366,13 +435,17 @@ function updateNotice() {
 }
 
 function updateGoState() {
-  const blocked =
-    (state.mode === "topic" && state.ollamaOk === false) ||
-    (state.checked && state.aceOk === false);
-  go.disabled = state.busy || blocked;
+  const topicUnavailable =
+    state.checked && state.mode === "topic" && !lyricistAvailable();
+  go.disabled =
+    state.busy || topicUnavailable || (state.checked && state.aceOk === false);
   go.textContent = state.busy ? "Composing…" : "Generate";
+  previewBtn.disabled =
+    state.busy || state.mode !== "topic" || topicUnavailable;
   surprise.disabled =
     state.busy || state.aceOk === false || state.llm === false;
+  singBtn.disabled = state.busy || state.aceOk === false;
+  lyricistSelect.disabled = state.mode !== "topic" || state.busy;
 }
 
 function setMode(mode) {
@@ -389,7 +462,8 @@ function setMode(mode) {
     : "a warm folk song about growing up by the sea…";
   modeHint.textContent = mode === "lyrics"
     ? "Your words go straight to ACE-Step; the length you choose is honoured exactly."
-    : "We ask Ollama on this machine to write the lyrics, then send them to ACE-Step.";
+    : `We ask ${lyricistLabel()} to write the lyrics, then send them to ACE-Step.`;
+  if (mode !== "topic") lyricsPanel.hidden = true;
   updateNotice();
   updateGoState();
 }
@@ -438,12 +512,48 @@ function renderDurations(values) {
   setDuration(state.duration);
 }
 
+function updateLyricistNote() {
+  const item = selectedLyricist();
+  if (!item) { lyricistNote.textContent = "not configured"; return; }
+  lyricistNote.textContent = item.available
+    ? (item.model || "ready")
+    : (item.error || "unavailable");
+}
+
+function renderLyricists(data) {
+  state.lyricists = data.lyricists || [];
+  const preferred = data.default || state.config?.lyricist || "ollama";
+  lyricistSelect.textContent = "";
+  for (const item of state.lyricists) {
+    const option = document.createElement("option");
+    option.value = item.name;
+    option.textContent = item.model
+      ? `${item.label} — ${item.model}`
+      : item.label;
+    option.disabled = !item.available;
+    lyricistSelect.appendChild(option);
+  }
+  let item = state.lyricists.find((entry) => entry.name === preferred);
+  if (!item || !item.available) {
+    item = state.lyricists.find((entry) => entry.available) || item;
+  }
+  state.lyricist = item ? item.name : preferred;
+  lyricistSelect.value = state.lyricist;
+  updateLyricistNote();
+  if (state.mode === "topic") {
+    modeHint.textContent =
+      `We ask ${lyricistLabel()} to write the lyrics, then send them to ACE-Step.`;
+  }
+  updateNotice();
+  updateGoState();
+}
+
 async function checkStatus() {
   pill.textContent = "checking…";
   pill.className = "pill";
-  const [ace, ollama] = await Promise.allSettled([
+  const [ace, lyricists] = await Promise.allSettled([
     api("/api/health"),
-    api("/api/ollama"),
+    api("/api/lyricists"),
   ]);
   if (ace.status === "fulfilled") {
     state.ace = ace.value;
@@ -454,20 +564,19 @@ async function checkStatus() {
     state.aceOk = false;
     state.llm = null;
   }
-  if (ollama.status === "fulfilled") {
-    state.ollama = ollama.value;
-    state.ollamaOk = Boolean(ollama.value.ok);
+  if (lyricists.status === "fulfilled") {
+    renderLyricists(lyricists.value);
   } else {
-    state.ollama = null;
-    state.ollamaOk = false;
+    state.lyricists = [];
   }
   state.checked = true;
   const aceText = state.aceOk ? "ACE-Step ready" : "ACE-Step offline";
-  const ollamaText = state.ollamaOk
-    ? `lyrics: ${state.ollama.model || "Ollama"}`
-    : "Ollama offline";
-  pill.textContent = `${aceText} · ${ollamaText}`;
-  pill.className = state.aceOk && state.ollamaOk
+  const item = selectedLyricist();
+  const lyricsText = item?.available
+    ? `lyrics: ${item.model || item.label}`
+    : "lyricist unavailable";
+  pill.textContent = `${aceText} · ${lyricsText}`;
+  pill.className = state.aceOk && item?.available
     ? "pill good"
     : (state.aceOk ? "pill warn" : "pill bad");
   updateNotice();
@@ -508,7 +617,10 @@ function addCard(song) {
   if (song.metas && song.metas.bpm && song.metas.bpm !== "N/A") {
     bits.push(`${song.metas.bpm} BPM`);
   }
-  if (song.mode === "topic") bits.push("lyrics by Ollama");
+  if (song.mode === "topic") {
+    const item = state.lyricists.find((entry) => entry.name === song.lyricist);
+    bits.push(`lyrics by ${item ? item.label : (song.lyricist || "lyricist")}`);
+  }
   if (song.mode === "describe") bits.push("invented by ACE-Step");
   meta.textContent = bits.join(" · ");
 
@@ -613,6 +725,23 @@ function randomPrompt() {
   return SURPRISE_PROMPTS[Math.floor(Math.random() * SURPRISE_PROMPTS.length)];
 }
 
+async function submitGeneration(payload, pendingLabel) {
+  const pending = addPending(pendingLabel);
+  try {
+    const { job_id } = await api("/api/generate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const songs = await pollJob(job_id, pending);
+    songs.forEach(addCard);
+    return songs;
+  } catch (err) {
+    pending.remove();
+    updateEmpty();
+    throw err;
+  }
+}
+
 async function generate(modeOverride) {
   clearError();
   const mode = modeOverride || state.mode;
@@ -621,6 +750,64 @@ async function generate(modeOverride) {
     source = randomPrompt();
     text.value = source;
   }
+  if (!source) { text.focus(); return; }
+  if (mode === "topic" && !lyricistAvailable()) {
+    showError("Choose an available lyricist, or use Write lyrics.");
+    return;
+  }
+  const duration = Number(durationInput.value);
+  if (!Number.isFinite(duration) || duration < 10 || duration > 600) {
+    showError("Length must be between 10 and 600 seconds.");
+    durationInput.focus();
+    return;
+  }
+
+  state.busy = true;
+  updateGoState();
+  const pendingLabel = mode === "topic"
+    ? `Writing lyrics with ${lyricistLabel()}…`
+    : (mode === "describe" ? "Asking ACE-Step to invent…" : "Queued…");
+  try {
+    await submitGeneration({
+      mode,
+      text: source,
+      genre: state.genre || "folk",
+      style: styleInput.value.trim(),
+      duration,
+      lyricist: state.lyricist,
+    }, pendingLabel);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    state.busy = false;
+    updateGoState();
+  }
+}
+
+async function pollLyricsJob(jobId, onProgress) {
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const job = await api(`/api/jobs/${jobId}`);
+    if (onProgress) onProgress(job.progress || job.status);
+    if (job.status === "done") {
+      if (!job.lyrics) throw new Error("The lyricist returned no result.");
+      if (job.lyrics.error) throw new Error(job.lyrics.error);
+      return job.lyrics;
+    }
+    if (job.status === "failed") {
+      throw new Error(job.error || "Could not write lyrics.");
+    }
+  }
+}
+
+async function previewLyrics() {
+  clearError();
+  if (state.mode !== "topic") return;
+  if (!lyricistAvailable()) {
+    showError("Choose an available lyricist, or use Write lyrics.");
+    return;
+  }
+  const source = text.value.trim();
   if (!source) { text.focus(); return; }
   const duration = Number(durationInput.value);
   if (!Number.isFinite(duration) || duration < 10 || duration > 600) {
@@ -631,27 +818,60 @@ async function generate(modeOverride) {
 
   state.busy = true;
   updateGoState();
-  const pending = addPending(
-    mode === "topic" ? "Writing lyrics with Ollama…" :
-    (mode === "describe" ? "Asking ACE-Step to invent…" : "Queued…")
-  );
+  lyricsPanel.hidden = false;
+  lyricsProvider.textContent = `Writing lyrics with ${lyricistLabel()}…`;
+  lyricsEdit.value = "";
   try {
-    const payload = {
-      mode,
-      text: source,
+    const { job_id } = await api("/api/lyrics", {
+      method: "POST",
+      body: JSON.stringify({
+        topic: source,
+        genre: state.genre || "folk",
+        style: styleInput.value.trim(),
+        duration,
+        lyricist: state.lyricist,
+      }),
+    });
+    const result = await pollLyricsJob(job_id, (progress) => {
+      lyricsProvider.textContent = progress || "Writing lyrics…";
+    });
+    lyricsEdit.value = result.lyrics;
+    lyricsProvider.textContent = result.model
+      ? `${result.provider} · ${result.model}`
+      : result.provider;
+    lyricsEdit.focus();
+  } catch (err) {
+    showError(err.message);
+    lyricsProvider.textContent = "Preview failed";
+  } finally {
+    state.busy = false;
+    updateGoState();
+  }
+}
+
+async function singPreview() {
+  clearError();
+  const lyrics = lyricsEdit.value.trim();
+  if (!lyrics) { lyricsEdit.focus(); return; }
+  const duration = Number(durationInput.value);
+  if (!Number.isFinite(duration) || duration < 10 || duration > 600) {
+    showError("Length must be between 10 and 600 seconds.");
+    durationInput.focus();
+    return;
+  }
+
+  state.busy = true;
+  updateGoState();
+  try {
+    await submitGeneration({
+      mode: "lyrics",
+      text: lyrics,
       genre: state.genre || "folk",
       style: styleInput.value.trim(),
       duration,
-    };
-    const { job_id } = await api("/api/generate", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    const songs = await pollJob(job_id, pending);
-    songs.forEach(addCard);
+    }, "Singing the preview…");
+    lyricsPanel.hidden = true;
   } catch (err) {
-    pending.remove();
-    updateEmpty();
     showError(err.message);
   } finally {
     state.busy = false;
@@ -674,7 +894,20 @@ async function boot() {
   });
   durationInput.oninput = () => setDuration(durationInput.value);
   go.onclick = () => generate();
+  previewBtn.onclick = previewLyrics;
+  singBtn.onclick = singPreview;
+  lyricsClose.onclick = () => { lyricsPanel.hidden = true; };
   surprise.onclick = () => generate("describe");
+  lyricistSelect.onchange = () => {
+    state.lyricist = lyricistSelect.value;
+    updateLyricistNote();
+    if (state.mode === "topic") {
+      modeHint.textContent =
+        `We ask ${lyricistLabel()} to write the lyrics, then send them to ACE-Step.`;
+    }
+    updateNotice();
+    updateGoState();
+  };
   pill.onclick = checkStatus;
   $("help-btn").onclick = () => helpDialog.showModal();
   $("help-close").onclick = () => helpDialog.close();
@@ -690,6 +923,7 @@ async function boot() {
     state.config = config;
     state.genre = config.genre || "folk";
     state.duration = Number(config.duration) || 30;
+    state.lyricist = config.lyricist || "ollama";
     if (config.style) styleInput.value = config.style;
     renderGenres(config.genres || []);
     renderDurations(config.durations || [30, 45, 60]);

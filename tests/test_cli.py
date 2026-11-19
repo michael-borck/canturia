@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 from canturia import __version__
 from canturia.cli import app
+from canturia.lyricists import LyricResult
 
 runner = CliRunner()
 
@@ -70,6 +71,43 @@ def test_topic_routes_to_topic(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["duration"] == 45.0
 
 
+def test_lyrics_only_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "canturia.cli.lyrics_only",
+        lambda *args, **kwargs: LyricResult(
+            lyrics="[Verse]\npreview words",
+            provider="ollama",
+            model="qwen3.5:4b",
+        ),
+    )
+    result = runner.invoke(
+        app, ["lyrics", "a song about rain", "--base-url", "http://ace"]
+    )
+    assert result.exit_code == 0
+    assert "preview words" in result.output
+    assert "qwen3.5:4b" in result.output
+
+
+def test_compare_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "canturia.cli.compare_lyrics",
+        lambda *args, **kwargs: [
+            LyricResult(
+                lyrics="[Verse]\nfrom ollama",
+                provider="ollama",
+                model="qwen3.5:4b",
+            ),
+            LyricResult(lyrics="", provider="acestep", error="LM off"),
+        ],
+    )
+    result = runner.invoke(
+        app, ["compare", "a song about rain", "--base-url", "http://ace"]
+    )
+    assert result.exit_code == 0
+    assert "from ollama" in result.output
+    assert "LM off" in result.output
+
+
 def test_lyrics_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
@@ -95,18 +133,31 @@ def test_health_output(monkeypatch: pytest.MonkeyPatch) -> None:
         },
     )
     monkeypatch.setattr(
-        "canturia.cli.ollama_status",
-        lambda settings: {
-            "ok": True,
-            "model": "qwen3.5:4b",
-            "models": ["qwen3.5:4b"],
-            "error": None,
-        },
+        "canturia.cli.lyricist_choices",
+        lambda settings: [
+            {
+                "name": "ollama",
+                "label": "Ollama (local)",
+                "model": "qwen3.5:4b",
+                "models": ["qwen3.5:4b"],
+                "available": True,
+                "error": None,
+            },
+            {
+                "name": "acestep",
+                "label": "ACE-Step LM (experimental)",
+                "model": "ACE-Step 5Hz LM",
+                "models": [],
+                "available": False,
+                "error": "off",
+            },
+        ],
     )
     result = runner.invoke(app, ["health", "--base-url", "http://ace"])
     assert result.exit_code == 0
     assert "acestep-v15-turbo" in result.output
-    assert "Ollama (qwen3.5:4b)" in result.output
+    assert "Ollama (local)" in result.output
+    assert "qwen3.5:4b" in result.output
 
 
 def test_missing_text_is_an_error() -> None:
