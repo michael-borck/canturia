@@ -12,6 +12,9 @@ No account, no telemetry, no hosted service. Nothing leaves your box except the
 request to the ACE-Step server you configure and the local Ollama call that
 writes lyrics.
 
+**Download the desktop app:** https://michael-borck.github.io/canturia/ — direct
+links for macOS Apple Silicon, macOS Intel, Windows, and Linux.
+
 ```
 "What's the song about?" ──► Ollama writes lyrics ──► ACE-Step sings
 "Write your own lyrics" ───────────────────────────► ACE-Step sings

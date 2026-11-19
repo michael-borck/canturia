@@ -42,3 +42,45 @@ jobs:
       APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+  stable-assets:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release-assets
+          gh release download "$GITHUB_REF_NAME" \
+            -R "$GITHUB_REPOSITORY" -D release-assets
+
+      - name: Add stable asset aliases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          shopt -s nullglob
+          copy_first() {
+            local pattern="$1" dest="$2"
+            local files=( $pattern )
+            if [ ${#files[@]} -gt 0 ]; then
+              cp "${files[0]}" "$dest"
+              echo "alias $dest"
+            else
+              echo "missing pattern $pattern"
+            fi
+          }
+          copy_first "*_aarch64.dmg" "Canturia-macOS-Apple-Silicon.dmg"
+          copy_first "*_x64.dmg" "Canturia-macOS-Intel.dmg"
+          copy_first "*_x64-setup.exe" "Canturia-Windows-x64-Setup.exe"
+          copy_first "*_x64_en-US.msi" "Canturia-Windows-x64.msi"
+          copy_first "*_amd64.AppImage" "Canturia-Linux-x86_64.AppImage"
+          copy_first "*_amd64.deb" "Canturia-Linux-amd64.deb"
+          copy_first "*_x86_64.rpm" "Canturia-Linux-x86_64.rpm"
+          gh release upload "$GITHUB_REF_NAME" Canturia-* \
+            --clobber -R "$GITHUB_REPOSITORY"
