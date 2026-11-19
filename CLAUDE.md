@@ -30,8 +30,9 @@ shell. PyPI package and CLI: `canturia`.
 - `resident: true` is live on the server. It keeps `thinking: true`, metadata
   backfill, Surprise, and the ACE-Step lyricist available.
 - Tauri shell, icons, `cargo check`, CI workflows, lyricist/BYOK Settings — in
-  the repo. The desktop release uses the shared app-hq workflow and adds stable
-  ASCII asset aliases for the landing page.
+  the repo. **v0.3.1 desktop release is signed/notarized via the shared app-hq
+  workflow** (macOS arm64 + Intel, Windows, Linux) and adds stable ASCII asset
+  aliases for the landing page.
 - Landing page in `landing/` (platform detection, direct stable download
   links), deployed by `.github/workflows/pages.yml` to
   https://michael-borck.github.io/canturia/.
