@@ -79,6 +79,68 @@ def test_submit_describe_mode() -> None:
     assert body["audio_duration"] == 60.0
 
 
+def test_submit_advanced_and_instrumental() -> None:
+    session = FakeSession([FakeResponse(payload=envelope({"task_id": "t1"}))])
+    client = AceStepClient("http://ace", session=session)  # type: ignore[arg-type]
+    client.submit(
+        SongRequest(
+            prompt="folk",
+            lyrics="words",
+            duration=30,
+            model="acestep-v15-turbo",
+            bpm=90,
+            key_scale="C major",
+            time_signature="4/4",
+            seed=42,
+            inference_steps=20,
+            guidance_scale=6.5,
+            instrumental=True,
+        )
+    )
+    body = session.calls[0][2]["json"]
+    assert body["lyrics"] == "[Instrumental]"
+    assert body["bpm"] == 90
+    assert body["key_scale"] == "C major"
+    assert body["time_signature"] == "4/4"
+    assert body["seed"] == 42
+    assert body["use_random_seed"] is False
+    assert body["inference_steps"] == 20
+    assert body["guidance_scale"] == 6.5
+    assert body["model"] == "acestep-v15-turbo"
+
+
+def test_models_and_lora_methods() -> None:
+    session = FakeSession(
+        [
+            FakeResponse(
+                payload={
+                    "object": "list",
+                    "data": [{"id": "acestep/acestep-v15-turbo"}],
+                }
+            ),
+            FakeResponse(
+                payload=envelope(
+                    {"lora_loaded": True, "use_lora": True, "lora_scale": 1.0}
+                )
+            ),
+            FakeResponse(payload=envelope({"message": "loaded"})),
+            FakeResponse(payload=envelope({"message": "unloaded"})),
+            FakeResponse(payload=envelope({"use_lora": False})),
+            FakeResponse(payload=envelope({"scale": 0.6})),
+        ]
+    )
+    client = AceStepClient("http://ace", session=session)  # type: ignore[arg-type]
+    assert client.models() == ["acestep-v15-turbo"]
+    assert client.lora_status()["lora_loaded"] is True
+    assert client.lora_load("/loras/a", "a")["message"] == "loaded"
+    assert client.lora_unload()["message"] == "unloaded"
+    assert client.lora_toggle(False)["use_lora"] is False
+    assert client.lora_scale(0.6)["scale"] == 0.6
+    assert session.calls[1][1].endswith("/v1/lora/status")
+    assert session.calls[2][2]["json"]["adapter_name"] == "a"
+    assert session.calls[5][2]["json"]["scale"] == 0.6
+
+
 def test_query_decodes_nested_result() -> None:
     result = json.dumps(
         [

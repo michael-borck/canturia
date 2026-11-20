@@ -41,6 +41,13 @@ class SongRequest:
     batch_size: int = 1
     thinking: bool = False
     vocal_language: str | None = "en"
+    bpm: int | None = None
+    key_scale: str | None = None
+    time_signature: str | None = None
+    seed: int | None = None
+    inference_steps: int | None = None
+    guidance_scale: float | None = None
+    instrumental: bool = False
 
 
 @dataclass
@@ -208,6 +215,62 @@ class AceStepClient:
         data = self._unwrap(response.json())
         return data if isinstance(data, dict) else {}
 
+    def models(self) -> list[str]:
+        """List the DiT models the server can run."""
+        data = self._unwrap(self._request("GET", "/v1/models").json())
+        items: Any = data
+        if isinstance(data, dict):
+            items = data.get("data") or data.get("models") or []
+        names: list[str] = []
+        for item in items or []:
+            if isinstance(item, dict):
+                name = item.get("id") or item.get("name")
+                if name:
+                    names.append(str(name).removeprefix("acestep/"))
+        return sorted(set(names))
+
+    def lora_status(self) -> dict[str, Any]:
+        data = self._unwrap(
+            self._request("GET", "/v1/lora/status").json()
+        )
+        return data if isinstance(data, dict) else {}
+
+    def lora_load(self, path: str, name: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"lora_path": path}
+        if name:
+            body["adapter_name"] = name
+        data = self._unwrap(
+            self._request("POST", "/v1/lora/load", json_body=body).json()
+        )
+        return data if isinstance(data, dict) else {}
+
+    def lora_unload(self) -> dict[str, Any]:
+        data = self._unwrap(
+            self._request("POST", "/v1/lora/unload", json_body={}).json()
+        )
+        return data if isinstance(data, dict) else {}
+
+    def lora_toggle(self, use_lora: bool) -> dict[str, Any]:
+        data = self._unwrap(
+            self._request(
+                "POST",
+                "/v1/lora/toggle",
+                json_body={"use_lora": use_lora},
+            ).json()
+        )
+        return data if isinstance(data, dict) else {}
+
+    def lora_scale(
+        self, scale: float, name: str | None = None
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"scale": scale}
+        if name:
+            body["adapter_name"] = name
+        data = self._unwrap(
+            self._request("POST", "/v1/lora/scale", json_body=body).json()
+        )
+        return data if isinstance(data, dict) else {}
+
     def create_sample(
         self,
         query: str,
@@ -244,13 +307,30 @@ class AceStepClient:
             "thinking": bool(request.thinking),
             "vocal_language": request.vocal_language or "en",
         }
-        if request.sample_query:
+        if request.instrumental:
+            payload["lyrics"] = "[Instrumental]"
+        elif request.sample_query:
             payload["sample_mode"] = True
             payload["sample_query"] = request.sample_query
         else:
             payload["lyrics"] = request.lyrics
         if request.model:
             payload["model"] = request.model
+        if request.bpm is not None:
+            payload["bpm"] = request.bpm
+        if request.key_scale:
+            payload["key_scale"] = request.key_scale
+        if request.time_signature:
+            payload["time_signature"] = request.time_signature
+        if request.inference_steps is not None:
+            payload["inference_steps"] = request.inference_steps
+        if request.guidance_scale is not None:
+            payload["guidance_scale"] = request.guidance_scale
+        if request.seed is not None:
+            payload["use_random_seed"] = False
+            payload["seed"] = request.seed
+        else:
+            payload["use_random_seed"] = True
 
         response = self._request("POST", "/release_task", json_body=payload)
         return self._task_id(self._unwrap(response.json()))

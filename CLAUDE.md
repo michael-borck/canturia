@@ -10,7 +10,7 @@ a genre and a length, and get an MP3 from an ACE-Step 1.5 server you point it
 at. Same shape as Limn: Python core + Typer CLI + FastAPI single page + Tauri v2
 shell. PyPI package and CLI: `canturia`.
 
-## Status (0.3.3)
+## Status (0.4.0)
 
 - Python core, ACE-Step client, lyricist providers, CLI, web UI, Help sheet,
   password gate, saved-song library, tests — done.
@@ -30,10 +30,10 @@ shell. PyPI package and CLI: `canturia`.
 - `resident: true` is live on the server. It keeps `thinking: true`, metadata
   backfill, Surprise, and the ACE-Step lyricist available.
 - Tauri shell, icons, `cargo check`, CI workflows, lyricist/BYOK Settings,
-  OS-keychain secrets, and the saved-song library — in the repo.
-  **v0.3.3 desktop release is signed/notarized via the shared app-hq workflow**
-  (macOS arm64 + Intel, Windows, Linux) and adds stable ASCII asset aliases for
-  the landing page.
+  OS-keychain secrets, the saved-song library, and the Options panel — in the
+  repo. **v0.4.0 desktop release is signed/notarized via the shared app-hq
+  workflow** (macOS arm64 + Intel, Windows, Linux) and adds stable ASCII asset
+  aliases for the landing page.
 - Landing page in `landing/` (platform detection, direct stable download
   links), deployed by `.github/workflows/pages.yml` to
   https://michael-borck.github.io/canturia/.
@@ -130,6 +130,7 @@ uv run --no-sync canturia "[Verse]\nMorning light" -g folk -t 10 -o /tmp/x.mp3 \
 - Desktop secrets live in the macOS Keychain / Windows Credential Manager and
   are injected into the sidecar environment; YAML keeps non-secret settings.
 - In-app Help sheet plus inline hints; no separate docs page in the UI.
-- No advanced controls in v1; document BPM/key/time signature/instrumental/
-  language/LoRA for later.
+- Advanced controls live under Options: instrumental, language, BPM, key,
+  time signature, seed, model, steps, guidance, and server-side LoRA.
+  The main flow stays simple.
 - Build order: CLI + web, then Tauri (both now in the repo).

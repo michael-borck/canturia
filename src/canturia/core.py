@@ -114,6 +114,13 @@ def build_request(
     *,
     thinking: bool = True,
     vocal_language: str = "en",
+    bpm: int | None = None,
+    key_scale: str | None = None,
+    time_signature: str | None = None,
+    seed: int | None = None,
+    inference_steps: int | None = None,
+    guidance_scale: float | None = None,
+    instrumental: bool = False,
 ) -> SongRequest:
     """Build the ACE-Step request for lyrics or the raw describe path.
 
@@ -121,13 +128,38 @@ def build_request(
     for lyrics, then reuses the lyrics path.
     """
     validate_mode(mode)
-    if mode == "topic":
+    if mode == "topic" and not instrumental:
         raise ValueError("Topic mode is resolved by generate(), not build_request().")
     source = (text or "").strip()
-    if not source:
+    if not source and not instrumental:
         raise ValueError("Give me lyrics, or a topic with 'topic'.")
     seconds = validate_duration(duration)
     prompt = genre_prompt(genre, style)
+    advanced = {
+        "bpm": int(bpm) if bpm is not None else None,
+        "key_scale": (key_scale or "").strip() or None,
+        "time_signature": (time_signature or "").strip() or None,
+        "seed": int(seed) if seed is not None else None,
+        "inference_steps": int(inference_steps)
+        if inference_steps is not None
+        else None,
+        "guidance_scale": float(guidance_scale)
+        if guidance_scale is not None
+        else None,
+        "instrumental": instrumental,
+    }
+    if instrumental:
+        if source and mode in ("describe", "topic"):
+            prompt = f"{prompt}, {source}"
+        return SongRequest(
+            prompt=prompt,
+            lyrics="[Instrumental]",
+            duration=seconds,
+            model=model,
+            thinking=thinking,
+            vocal_language=vocal_language,
+            **advanced,
+        )
     if mode == "describe":
         language = language_name(vocal_language)
         # The 5Hz LM ignores vocal_language in sample mode. The only lever
@@ -152,6 +184,7 @@ def build_request(
             model=model,
             thinking=thinking,
             vocal_language=vocal_language,
+            **advanced,
         )
     return SongRequest(
         prompt=prompt,
@@ -160,6 +193,7 @@ def build_request(
         model=model,
         thinking=thinking,
         vocal_language=vocal_language,
+        **advanced,
     )
 
 
@@ -207,6 +241,7 @@ def lyrics(
     style: str | None,
     duration: float,
     lyricist: str | None = None,
+    language: str | None = None,
     on_progress: Any = None,
 ) -> LyricResult:
     """Write lyrics only, using the chosen lyricist."""
@@ -219,7 +254,7 @@ def lyrics(
         genre=genre,
         style=(style or "").strip(),
         duration=validate_duration(duration),
-        language=str(settings.get("vocal_language") or "en"),
+        language=language or str(settings.get("vocal_language") or "en"),
     )
     return writer.write(request, on_progress=on_progress)
 
@@ -232,6 +267,7 @@ def write_lyrics(
     style: str | None,
     duration: float,
     lyricist: str | None = None,
+    language: str | None = None,
     on_progress: Any = None,
 ) -> str:
     """Compatibility wrapper returning only the lyric text."""
@@ -242,6 +278,7 @@ def write_lyrics(
         style=style,
         duration=duration,
         lyricist=lyricist,
+        language=language,
         on_progress=on_progress,
     ).lyrics
 
@@ -254,6 +291,7 @@ def compare_lyrics(
     genre: str,
     style: str | None,
     duration: float,
+    language: str | None = None,
     on_progress: Any = None,
 ) -> list[LyricResult]:
     """Run several lyricists, returning an error result for any failure."""
@@ -268,6 +306,7 @@ def compare_lyrics(
                     style=style,
                     duration=duration,
                     lyricist=name,
+                    language=language,
                     on_progress=on_progress,
                 )
             )
@@ -292,6 +331,15 @@ def generate(
     style: str | None = None,
     duration: Any = None,
     lyricist: str | None = None,
+    bpm: int | None = None,
+    key_scale: str | None = None,
+    time_signature: str | None = None,
+    seed: int | None = None,
+    model: str | None = None,
+    inference_steps: int | None = None,
+    guidance_scale: float | None = None,
+    instrumental: bool = False,
+    vocal_language: str | None = None,
     on_progress: Any = None,
 ) -> Generation:
     """Generate one song (batch size 1) from lyrics or a topic."""
@@ -303,12 +351,38 @@ def generate(
         duration if duration is not None else settings.get("duration") or 30
     )
     thinking = bool(settings.get("thinking", True))
-    vocal_language = str(settings.get("vocal_language") or "en")
+    chosen_language = vocal_language or str(
+        settings.get("vocal_language") or "en"
+    )
+    chosen_model = model or settings.get("model")
+    advanced: dict[str, Any] = {
+        "bpm": bpm,
+        "key_scale": key_scale,
+        "time_signature": time_signature,
+        "seed": seed,
+        "inference_steps": inference_steps,
+        "guidance_scale": guidance_scale,
+        "instrumental": instrumental,
+    }
 
     source_text = (text or "").strip()
     writer_name: str | None
     writer_model: str | None = None
-    if mode == "topic":
+    if instrumental:
+        writer_name = "instrumental"
+        warnings = []
+        request = build_request(
+            mode,
+            source_text,
+            chosen_genre,
+            chosen_style,
+            chosen_duration,
+            model=chosen_model,
+            thinking=thinking,
+            vocal_language=chosen_language,
+            **advanced,
+        )
+    elif mode == "topic":
         written = lyrics(
             source_text,
             settings,
@@ -316,6 +390,7 @@ def generate(
             style=chosen_style,
             duration=validate_duration(chosen_duration),
             lyricist=lyricist,
+            language=chosen_language,
             on_progress=on_progress,
         )
         writer_name = written.provider
@@ -327,9 +402,10 @@ def generate(
             chosen_genre,
             chosen_style,
             chosen_duration,
-            model=settings.get("model"),
+            model=chosen_model,
             thinking=thinking,
-            vocal_language=vocal_language,
+            vocal_language=chosen_language,
+            **advanced,
         )
     else:
         writer_name = "user" if mode == "lyrics" else "acestep"
@@ -342,9 +418,10 @@ def generate(
             chosen_genre,
             chosen_style,
             chosen_duration,
-            model=settings.get("model"),
+            model=chosen_model,
             thinking=thinking,
-            vocal_language=vocal_language,
+            vocal_language=chosen_language,
+            **advanced,
         )
 
     client = client_from_settings(settings)
@@ -421,6 +498,14 @@ def metadata_for(generation: Generation, song: SongResult) -> dict[str, Any]:
         "duration": generation.duration,
         "vocal_language": generation.request.vocal_language,
         "thinking": generation.request.thinking,
+        "instrumental": generation.request.instrumental,
+        "bpm": generation.request.bpm,
+        "key_scale": generation.request.key_scale,
+        "time_signature": generation.request.time_signature,
+        "seed": generation.request.seed,
+        "model": generation.request.model,
+        "inference_steps": generation.request.inference_steps,
+        "guidance_scale": generation.request.guidance_scale,
         "remote_file": song.file_path,
         "metas": song.metas,
         "created": datetime.now(timezone.utc).isoformat(),

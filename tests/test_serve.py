@@ -82,6 +82,7 @@ def fake_lyrics(
     style: str | None = None,
     duration: Any = None,
     lyricist: str | None = None,
+    language: str | None = None,
     on_progress: Any = None,
 ) -> LyricResult:
     if on_progress:
@@ -104,6 +105,26 @@ class FakeClient:
             "loaded_model": "acestep-v15-turbo",
         }
 
+    def models(self) -> list[str]:
+        return ["acestep-v15-turbo"]
+
+    def lora_status(self) -> dict[str, Any]:
+        return {"lora_loaded": True, "use_lora": True, "lora_scale": 1.0}
+
+    def lora_load(self, path: str, name: str | None = None) -> dict[str, Any]:
+        return {"message": f"loaded {path}", "adapter_name": name}
+
+    def lora_unload(self) -> dict[str, Any]:
+        return {"message": "unloaded"}
+
+    def lora_toggle(self, use_lora: bool) -> dict[str, Any]:
+        return {"use_lora": use_lora}
+
+    def lora_scale(
+        self, scale: float, name: str | None = None
+    ) -> dict[str, Any]:
+        return {"scale": scale, "adapter_name": name}
+
 
 def fake_generate(
     mode: str,
@@ -115,6 +136,7 @@ def fake_generate(
     duration: Any = None,
     lyricist: str | None = None,
     on_progress: Any = None,
+    **kwargs: Any,
 ) -> Generation:
     if on_progress:
         on_progress("rendering")
@@ -125,13 +147,23 @@ def fake_generate(
         lyrics = text
     else:
         lyrics = ""
+    if kwargs.get("instrumental"):
+        lyrics = "[Instrumental]"
     request = SongRequest(
         prompt="gentle acoustic folk",
         lyrics=lyrics,
         duration=seconds,
         sample_query=text if mode == "describe" else None,
         thinking=True,
-        vocal_language="en",
+        vocal_language=kwargs.get("vocal_language") or "en",
+        bpm=kwargs.get("bpm"),
+        key_scale=kwargs.get("key_scale"),
+        time_signature=kwargs.get("time_signature"),
+        seed=kwargs.get("seed"),
+        model=kwargs.get("model"),
+        inference_steps=kwargs.get("inference_steps"),
+        guidance_scale=kwargs.get("guidance_scale"),
+        instrumental=bool(kwargs.get("instrumental")),
     )
     return Generation(
         songs=[
@@ -359,6 +391,51 @@ def test_topic_job_uses_ollama_lyrics(tmp_path: Path) -> None:
         assert song["duration"] == 45
         assert song["lyricist"] == "ollama"
         assert song["lyricist_model"] == "qwen3.5:4b"
+
+
+def test_advanced_generate_and_lora_endpoints(tmp_path: Path) -> None:
+    with TestClient(make_app(tmp_path)) as client:
+        response = client.post(
+            "/api/generate",
+            json={
+                "mode": "lyrics",
+                "text": "words",
+                "genre": "folk",
+                "duration": 30,
+                "instrumental": True,
+                "vocal_language": "es",
+                "bpm": 90,
+                "key_scale": "C major",
+                "time_signature": "4/4",
+                "seed": 42,
+                "model": "acestep-v15-turbo",
+                "inference_steps": 20,
+                "guidance_scale": 6.5,
+            },
+        )
+        job = wait_for_job(client, response.json()["job_id"])
+        song = job["songs"][0]
+        assert song["instrumental"] is True
+        assert song["bpm"] == 90
+        assert song["key_scale"] == "C major"
+        assert song["time_signature"] == "4/4"
+        assert song["seed"] == 42
+        assert song["lyrics"] == "[Instrumental]"
+
+        assert client.get("/api/models").json()["models"] == [
+            "acestep-v15-turbo"
+        ]
+        assert client.get("/api/lora").json()["status"]["lora_loaded"] is True
+        assert client.post(
+            "/api/lora/load", json={"path": "/loras/a", "name": "a"}
+        ).status_code == 200
+        assert client.post(
+            "/api/lora/toggle", json={"use_lora": False}
+        ).json()["result"]["use_lora"] is False
+        assert client.post(
+            "/api/lora/scale", json={"scale": 0.6}
+        ).json()["result"]["scale"] == 0.6
+        assert client.post("/api/lora/unload").status_code == 200
 
 
 def test_preview_lyrics_job(tmp_path: Path) -> None:

@@ -89,6 +89,11 @@ class Song:
             "lyricist": self.generation.lyricist,
             "lyricist_model": self.generation.lyricist_model,
             "lyrics_warnings": self.generation.lyrics_warnings,
+            "instrumental": self.generation.request.instrumental,
+            "bpm": self.generation.request.bpm,
+            "key_scale": self.generation.request.key_scale,
+            "time_signature": self.generation.request.time_signature,
+            "seed": self.generation.request.seed,
             "metas": self.song.metas,
             "created": self.created,
         }
@@ -113,6 +118,15 @@ class GeneratePayload(BaseModel):
     style: str | None = None
     duration: float = Field(default=30, ge=10, le=600)
     lyricist: str | None = None
+    instrumental: bool = False
+    vocal_language: str | None = None
+    bpm: int | None = Field(default=None, ge=1, le=300)
+    key_scale: str | None = None
+    time_signature: str | None = None
+    seed: int | None = None
+    model: str | None = None
+    inference_steps: int | None = Field(default=None, ge=1, le=200)
+    guidance_scale: float | None = Field(default=None, ge=0, le=50)
 
 
 class LyricsPayload(BaseModel):
@@ -121,6 +135,21 @@ class LyricsPayload(BaseModel):
     style: str | None = None
     duration: float = Field(default=30, ge=10, le=600)
     lyricist: str | None = None
+    vocal_language: str | None = None
+
+
+class LoraLoadPayload(BaseModel):
+    path: str = Field(min_length=1)
+    name: str | None = None
+
+
+class LoraTogglePayload(BaseModel):
+    use_lora: bool
+
+
+class LoraScalePayload(BaseModel):
+    scale: float = Field(ge=0, le=1)
+    name: str | None = None
 
 
 class LoginPayload(BaseModel):
@@ -393,6 +422,15 @@ def create_app(
                 style=payload.style,
                 duration=payload.duration,
                 lyricist=payload.lyricist,
+                instrumental=payload.instrumental,
+                vocal_language=payload.vocal_language,
+                bpm=payload.bpm,
+                key_scale=payload.key_scale,
+                time_signature=payload.time_signature,
+                seed=payload.seed,
+                model=payload.model,
+                inference_steps=payload.inference_steps,
+                guidance_scale=payload.guidance_scale,
                 on_progress=lambda message: set_progress(job_id, message),
             )
             requested = _payload_dict(payload)
@@ -451,6 +489,7 @@ def create_app(
                 style=payload.style,
                 duration=payload.duration,
                 lyricist=payload.lyricist,
+                language=payload.vocal_language,
                 on_progress=lambda message: set_progress(job_id, message),
             )
             with lock:
@@ -557,6 +596,18 @@ def create_app(
             "desktop": desktop,
             "lyricist": settings.get("lyricist") or "ollama",
             "ollama_model": (settings.get("ollama") or {}).get("model"),
+            "vocal_languages": [
+                {"code": "en", "label": "English"},
+                {"code": "es", "label": "Spanish"},
+                {"code": "fr", "label": "French"},
+                {"code": "de", "label": "German"},
+                {"code": "it", "label": "Italian"},
+                {"code": "pt", "label": "Portuguese"},
+                {"code": "ja", "label": "Japanese"},
+                {"code": "ko", "label": "Korean"},
+                {"code": "zh", "label": "Chinese"},
+            ],
+            "time_signatures": ["4/4", "3/4", "6/8", "2/4"],
         }
 
     @app.get("/api/lyricists", dependencies=[Depends(require_auth)])
@@ -591,6 +642,61 @@ def create_app(
     @app.post("/api/generate", dependencies=[Depends(require_auth)])
     def api_generate(payload: GeneratePayload) -> dict[str, Any]:
         return {"job_id": start_job(payload)}
+
+    @app.get("/api/models", dependencies=[Depends(require_auth)])
+    def api_models() -> dict[str, Any]:
+        try:
+            client = make_client()
+            try:
+                client.request_timeout = min(
+                    float(getattr(client, "request_timeout", 8)), 8.0
+                )
+            except (AttributeError, TypeError, ValueError):
+                pass
+            return {"models": client.models()}
+        except (AceStepError, ValueError) as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    @app.get("/api/lora", dependencies=[Depends(require_auth)])
+    def api_lora_status() -> dict[str, Any]:
+        try:
+            return {"status": make_client().lora_status()}
+        except (AceStepError, ValueError) as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    @app.post("/api/lora/load", dependencies=[Depends(require_auth)])
+    def api_lora_load(payload: LoraLoadPayload) -> dict[str, Any]:
+        try:
+            return {
+                "result": make_client().lora_load(payload.path, payload.name)
+            }
+        except (AceStepError, ValueError) as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    @app.post("/api/lora/unload", dependencies=[Depends(require_auth)])
+    def api_lora_unload() -> dict[str, Any]:
+        try:
+            return {"result": make_client().lora_unload()}
+        except (AceStepError, ValueError) as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    @app.post("/api/lora/toggle", dependencies=[Depends(require_auth)])
+    def api_lora_toggle(payload: LoraTogglePayload) -> dict[str, Any]:
+        try:
+            return {
+                "result": make_client().lora_toggle(payload.use_lora)
+            }
+        except (AceStepError, ValueError) as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    @app.post("/api/lora/scale", dependencies=[Depends(require_auth)])
+    def api_lora_scale(payload: LoraScalePayload) -> dict[str, Any]:
+        try:
+            return {
+                "result": make_client().lora_scale(payload.scale, payload.name)
+            }
+        except (AceStepError, ValueError) as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
 
     @app.get("/api/library", dependencies=[Depends(require_auth)])
     def api_library() -> dict[str, Any]:

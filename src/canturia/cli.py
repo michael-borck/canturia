@@ -11,6 +11,7 @@ from typing import Any
 
 import typer
 from rich.console import Console
+from rich.pretty import Pretty
 from rich.table import Table
 from typer.core import TyperGroup
 
@@ -25,6 +26,7 @@ from canturia.config import (
 from canturia.core import (
     DURATION_MAX,
     DURATION_MIN,
+    client_from_settings,
     compare_lyrics,
     generate,
     health,
@@ -148,6 +150,15 @@ def _run_generate(
     password: str | None,
     timeout: float | None,
     lyricist: str | None = None,
+    instrumental: bool = False,
+    language: str | None = None,
+    bpm: int | None = None,
+    key_scale: str | None = None,
+    time_signature: str | None = None,
+    seed: int | None = None,
+    model: str | None = None,
+    steps: int | None = None,
+    guidance: float | None = None,
 ) -> None:
     cfg = _connection_options(
         base_url=base_url,
@@ -168,6 +179,15 @@ def _run_generate(
             style=style,
             duration=duration,
             lyricist=lyricist,
+            instrumental=instrumental,
+            vocal_language=language,
+            bpm=bpm,
+            key_scale=key_scale,
+            time_signature=time_signature,
+            seed=seed,
+            model=model,
+            inference_steps=steps,
+            guidance_scale=guidance,
             on_progress=lambda message: status.update(f"Generating… {message}"),
         )
 
@@ -213,6 +233,43 @@ def generate_cmd(
         min=DURATION_MIN,
         max=DURATION_MAX,
         help=f"Length in seconds ({int(DURATION_MIN)}–{int(DURATION_MAX)}).",
+        show_default=False,
+    ),
+    instrumental: bool = typer.Option(
+        False, "--instrumental", help="Instrumental: lyrics are skipped."
+    ),
+    language: str | None = typer.Option(
+        None,
+        "--language",
+        help="Vocal language code (en, es, fr, de, it, pt, ja, ko, zh).",
+        show_default=False,
+    ),
+    bpm: int | None = typer.Option(
+        None, "--bpm", min=1, max=300, help="Tempo (optional).",
+        show_default=False,
+    ),
+    key_scale: str | None = typer.Option(
+        None, "--key", help="Key, e.g. 'C major' (optional).",
+        show_default=False,
+    ),
+    time_signature: str | None = typer.Option(
+        None, "--time-signature", help="e.g. 4/4, 3/4, 6/8 (optional).",
+        show_default=False,
+    ),
+    seed: int | None = typer.Option(
+        None, "--seed", help="Seed for reproducibility (optional).",
+        show_default=False,
+    ),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="DiT model name (optional).",
+        show_default=False,
+    ),
+    steps: int | None = typer.Option(
+        None, "--steps", min=1, max=200, help="Inference steps (optional).",
+        show_default=False,
+    ),
+    guidance: float | None = typer.Option(
+        None, "--guidance", min=0, max=50, help="Guidance scale (optional).",
         show_default=False,
     ),
     out: str | None = typer.Option(
@@ -287,6 +344,15 @@ def generate_cmd(
             username=username,
             password=password,
             timeout=timeout,
+            instrumental=instrumental,
+            language=language,
+            bpm=bpm,
+            key_scale=key_scale,
+            time_signature=time_signature,
+            seed=seed,
+            model=model,
+            steps=steps,
+            guidance=guidance,
         )
     except (ConfigurationError, AceStepError, OllamaError, LyricistError, ValueError) as e:
         err_console.print(str(e))
@@ -425,6 +491,43 @@ def topic(
         help=f"Length in seconds ({int(DURATION_MIN)}–{int(DURATION_MAX)}).",
         show_default=False,
     ),
+    instrumental: bool = typer.Option(
+        False, "--instrumental", help="Instrumental: lyrics are skipped."
+    ),
+    language: str | None = typer.Option(
+        None,
+        "--language",
+        help="Vocal language code (en, es, fr, de, it, pt, ja, ko, zh).",
+        show_default=False,
+    ),
+    bpm: int | None = typer.Option(
+        None, "--bpm", min=1, max=300, help="Tempo (optional).",
+        show_default=False,
+    ),
+    key_scale: str | None = typer.Option(
+        None, "--key", help="Key, e.g. 'C major' (optional).",
+        show_default=False,
+    ),
+    time_signature: str | None = typer.Option(
+        None, "--time-signature", help="e.g. 4/4, 3/4, 6/8 (optional).",
+        show_default=False,
+    ),
+    seed: int | None = typer.Option(
+        None, "--seed", help="Seed for reproducibility (optional).",
+        show_default=False,
+    ),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="DiT model name (optional).",
+        show_default=False,
+    ),
+    steps: int | None = typer.Option(
+        None, "--steps", min=1, max=200, help="Inference steps (optional).",
+        show_default=False,
+    ),
+    guidance: float | None = typer.Option(
+        None, "--guidance", min=0, max=50, help="Guidance scale (optional).",
+        show_default=False,
+    ),
     out: str | None = typer.Option(
         None,
         "--out",
@@ -477,6 +580,15 @@ def topic(
             username=username,
             password=password,
             timeout=timeout,
+            instrumental=instrumental,
+            language=language,
+            bpm=bpm,
+            key_scale=key_scale,
+            time_signature=time_signature,
+            seed=seed,
+            model=model,
+            steps=steps,
+            guidance=guidance,
             lyricist=lyricist,
         )
     except (ConfigurationError, AceStepError, OllamaError, LyricistError, ValueError) as e:
@@ -517,6 +629,10 @@ def lyrics(
         min=DURATION_MIN,
         max=DURATION_MAX,
         help=f"Target length in seconds ({int(DURATION_MIN)}–{int(DURATION_MAX)}).",
+        show_default=False,
+    ),
+    language: str | None = typer.Option(
+        None, "--language", help="Language for the lyricist/prompt.",
         show_default=False,
     ),
     out: str | None = typer.Option(
@@ -582,6 +698,7 @@ def lyrics(
             style=chosen_style,
             duration=chosen_duration,
             lyricist=lyricist,
+            language=language,
         )
         header = f"{result.provider}"
         if result.model:
@@ -637,6 +754,10 @@ def compare(
         help=f"Target length in seconds ({int(DURATION_MIN)}–{int(DURATION_MAX)}).",
         show_default=False,
     ),
+    language: str | None = typer.Option(
+        None, "--language", help="Language for the lyricist/prompt.",
+        show_default=False,
+    ),
     config: str | None = typer.Option(
         None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
         show_default=False,
@@ -688,6 +809,7 @@ def compare(
             genre=chosen_genre,
             style=chosen_style,
             duration=chosen_duration,
+            language=language,
         )
         for result in results:
             title = result.provider
@@ -818,6 +940,272 @@ def library_cmd(
     except (ConfigurationError, ValueError) as e:
         err_console.print(str(e))
         raise typer.Exit(code=1) from None
+
+
+lora_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+
+
+def _lora_client(
+    *,
+    config: str | None,
+    base_url: str | None,
+    api_key: str | None,
+    username: str | None,
+    password: str | None,
+):
+    cfg = _connection_options(
+        base_url=base_url,
+        api_key=api_key,
+        username=username,
+        password=password,
+        config=config,
+    )
+    return client_from_settings(resolve_settings(cfg))
+
+
+@lora_app.command("status")
+def lora_status_cmd(
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+) -> None:
+    """Show the server's loaded LoRA adapters."""
+    try:
+        client = _lora_client(
+            config=config,
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+        )
+        console.print(Pretty(client.lora_status()))
+    except (ConfigurationError, AceStepError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+@lora_app.command("load")
+def lora_load_cmd(
+    path: str = typer.Argument(..., help="Server path to a LoRA adapter."),
+    name: str | None = typer.Option(
+        None, "--name", help="Adapter name for multi-adapter mode.",
+        show_default=False,
+    ),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+) -> None:
+    """Load a LoRA adapter on the server."""
+    try:
+        client = _lora_client(
+            config=config,
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+        )
+        console.print(Pretty(client.lora_load(path, name)))
+    except (ConfigurationError, AceStepError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+@lora_app.command("unload")
+def lora_unload_cmd(
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+) -> None:
+    """Unload the current adapter and restore the base model."""
+    try:
+        client = _lora_client(
+            config=config,
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+        )
+        console.print(Pretty(client.lora_unload()))
+    except (ConfigurationError, AceStepError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+@lora_app.command("on")
+def lora_on_cmd(
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+) -> None:
+    """Enable the loaded adapter."""
+    try:
+        client = _lora_client(
+            config=config,
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+        )
+        console.print(Pretty(client.lora_toggle(True)))
+    except (ConfigurationError, AceStepError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+@lora_app.command("off")
+def lora_off_cmd(
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+) -> None:
+    """Bypass the loaded adapter without unloading it."""
+    try:
+        client = _lora_client(
+            config=config,
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+        )
+        console.print(Pretty(client.lora_toggle(False)))
+    except (ConfigurationError, AceStepError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+@lora_app.command("scale")
+def lora_scale_cmd(
+    value: float = typer.Argument(..., min=0.0, max=1.0),
+    name: str | None = typer.Option(
+        None, "--name", help="Adapter name for multi-adapter mode.",
+        show_default=False,
+    ),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="ACE-Step URL (overrides config).",
+        show_default=False,
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for ACE-Step.",
+        show_default=False,
+    ),
+    username: str | None = typer.Option(
+        None, "--username", help="HTTP Basic username (reverse proxy).",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="HTTP Basic password (reverse proxy).",
+        show_default=False,
+    ),
+) -> None:
+    """Set the loaded adapter's strength (0.0-1.0)."""
+    try:
+        client = _lora_client(
+            config=config,
+            base_url=base_url,
+            api_key=api_key,
+            username=username,
+            password=password,
+        )
+        console.print(Pretty(client.lora_scale(value, name)))
+    except (ConfigurationError, AceStepError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
+
+
+app.add_typer(lora_app, name="lora", help="LoRA adapters on the ACE-Step server.")
 
 
 @app.command()

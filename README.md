@@ -157,6 +157,31 @@ canturia serve
 Every saved song gets a `<song>.json` sidecar with the mode, lyrics writer,
 genre, style, prompt, lyrics, duration, vocal language, and server metadata.
 
+## Optional depth
+
+The main screen stays simple; an **Options** disclosure adds:
+
+- Instrumental (skips lyrics)
+- Vocal language
+- BPM, key, and time signature
+- Seed
+- DiT model
+- Inference steps and guidance scale
+- Server-side LoRA: load, use/bypass, scale, unload
+
+```bash
+canturia topic "a rainy street" --instrumental --language es --bpm 90 \
+  --key "C major" --time-signature 4/4 --seed 42 --steps 20 --guidance 6.5
+
+canturia lora status
+canturia lora load /app/loras/my-adapter --name my-adapter
+canturia lora scale 0.7
+canturia lora off
+canturia lora unload
+```
+
+LoRA is a server-side adapter; the path must exist on the ACE-Step host.
+
 ## Web UI
 
 ```bash
@@ -165,8 +190,9 @@ canturia serve --password "something" --host 0.0.0.0
 
 The page has **About a topic** and **Write lyrics** tabs, a lyricist selector,
 a **Preview lyrics** panel (edit before singing), a **Surprise me** button,
-genre chips, 30/45/60 s presets plus a custom field, style details, a **Help**
-sheet, and inline hints. Songs appear in a session gallery with an audio player,
+genre chips, 30/45/60 s presets plus a custom field, style details, an
+**Options** panel for advanced controls and LoRA, a **Help** sheet, and inline
+hints. Songs appear in a session gallery with an audio player,
 Save, Download, Again, and Delete. The session gallery is in memory only; Save
 writes into `~/Music/Canturia` (or `serve.out_dir`).
 
@@ -224,7 +250,7 @@ cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.3.3` from PyPI. For local Python
+The sidecar installs `canturia[serve]==0.4.0` from PyPI. For local Python
 changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
 instead.
 
@@ -254,7 +280,7 @@ uv run --no-sync pytest
 - **M1** — Python core, CLI, web UI (done).
 - **M2** — Tauri desktop shell with a Settings sheet for the server URL,
   credentials, and lyricist/BYOK, uv-bootstrapped sidecar, installers in CI
-  (done; PyPI 0.3.3).
+  (done; PyPI 0.4.0).
 - **M3** — Optional advanced controls, documented but hidden by default: BPM,
   key, time signature, instrumental, vocal language, LoRA selection.
 

@@ -100,6 +100,51 @@
     flex: 1; font: inherit; font-size: .86rem; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 7px; padding: .35rem .55rem;
   }
+  .advanced { margin-top: .2rem; }
+  .advanced > summary {
+    cursor: pointer; color: var(--muted); font-size: .82rem;
+    user-select: none; padding: .2rem 0;
+  }
+  .advanced-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .6rem .8rem; padding: .7rem 0 .4rem;
+  }
+  .advanced-grid label {
+    display: flex; flex-direction: column; gap: .2rem;
+    font-size: .74rem; color: var(--muted);
+  }
+  .advanced-grid label.check {
+    flex-direction: row; align-items: center; gap: .4rem; font-size: .8rem;
+    color: var(--ink);
+  }
+  .advanced-grid input, .advanced-grid select {
+    font: inherit; font-size: .8rem; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: .25rem .45rem;
+    width: 100%;
+  }
+  .lora-box {
+    border-top: 1px solid var(--line); margin-top: .4rem;
+    padding-top: .65rem; display: grid; gap: .45rem;
+  }
+  .lora-head { display: flex; align-items: baseline; gap: .6rem; font-size: .8rem; }
+  .lora-head span { color: var(--muted); font-size: .74rem; }
+  .lora-row { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+  .lora-row input {
+    font: inherit; font-size: .78rem; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: .25rem .45rem;
+  }
+  .lora-row input#lora-path { flex: 1; min-width: 12rem; }
+  .lora-row .inline {
+    display: flex; align-items: center; gap: .3rem;
+    font-size: .74rem; color: var(--muted);
+  }
+  .lora-row .inline input { width: 4.5rem; }
+  .lora-row button {
+    font: inherit; font-size: .74rem; padding: .25rem .5rem;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink); cursor: pointer;
+  }
+  .lora-row button:hover { border-color: var(--muted); }
   .lyricist-note { color: var(--muted); font-size: .75rem; }
   .lyrics-panel {
     margin-top: 1rem; background: var(--panel); border: 1px solid var(--line);
@@ -259,6 +304,34 @@
           <input id="style" placeholder="warm female vocals, fingerpicked guitar, close mic…">
         </div>
       </div>
+      <details class="advanced">
+        <summary>Options</summary>
+        <div class="advanced-grid">
+          <label class="check"><input id="instrumental" type="checkbox"> Instrumental · no lyrics</label>
+          <label>Vocal language<select id="language"></select></label>
+          <label>BPM<input id="bpm" type="number" min="1" max="300" placeholder="auto"></label>
+          <label>Key<input id="key" placeholder="C major"></label>
+          <label>Time signature<select id="time-signature"><option value="">auto</option></select></label>
+          <label>Seed<input id="seed" type="number" placeholder="random"></label>
+          <label>Model<select id="model"><option value="">server default</option></select></label>
+          <label>Inference steps<input id="steps" type="number" min="1" max="200" placeholder="auto"></label>
+          <label>Guidance<input id="guidance" type="number" min="0" max="50" step="0.1" placeholder="auto"></label>
+        </div>
+        <div class="lora-box">
+          <div class="lora-head"><strong>LoRA</strong><span id="lora-status">checking…</span></div>
+          <div class="lora-row">
+            <input id="lora-path" placeholder="server path to a LoRA adapter">
+            <input id="lora-name" placeholder="adapter name (optional)">
+            <button id="lora-load" type="button">Load</button>
+          </div>
+          <div class="lora-row">
+            <button id="lora-toggle" type="button">Use</button>
+            <button id="lora-unload" type="button">Unload</button>
+            <label class="inline">Scale <input id="lora-scale" type="number" min="0" max="1" step="0.05" value="1"></label>
+            <button id="lora-scale-apply" type="button">Apply</button>
+          </div>
+        </div>
+      </details>
     </div>
 
     <div class="bar">
@@ -306,6 +379,10 @@
     <p>Type a theme or a sentence. Canturía asks the chosen lyricist to write
     the lyrics, then sends them to ACE-Step with your genre, length, and English
     vocals. The length is honoured exactly.</p>
+    <h3>Options</h3>
+    <p>Instrumental skips lyrics. Vocal language, BPM, key, time signature, seed,
+    model, steps, and guidance are sent to ACE-Step for this request. LoRA is
+    server-side: load an adapter path, then use, bypass, scale, or unload it.</p>
     <h3>Preview lyrics</h3>
     <p>Write the words first, without generating audio. Edit them, then press
     <strong>Sing these lyrics</strong> to send them to ACE-Step. This is the
@@ -354,6 +431,12 @@ const lyricistSelect = $("lyricist"), lyricistNote = $("lyricist-note");
 const previewBtn = $("preview"), lyricsPanel = $("lyrics-panel");
 const lyricsEdit = $("lyrics-edit"), lyricsProvider = $("lyrics-provider");
 const lyricsWarning = $("lyrics-warning");
+const instrumentalInput = $("instrumental");
+const languageSelect = $("language"), timeSignatureSelect = $("time-signature");
+const bpmInput = $("bpm"), keyInput = $("key"), seedInput = $("seed");
+const modelSelect = $("model"), stepsInput = $("steps"), guidanceInput = $("guidance");
+const loraStatus = $("lora-status"), loraPath = $("lora-path"), loraName = $("lora-name");
+const loraScale = $("lora-scale"), loraToggle = $("lora-toggle");
 const singBtn = $("sing"), lyricsClose = $("lyrics-close");
 
 const SURPRISE_PROMPTS = [
@@ -371,6 +454,7 @@ const state = {
   ace: null,
   lyricists: [],
   lyricist: "ollama",
+  lora: null,
   aceOk: null,
   llm: null,
   checked: false,
@@ -447,8 +531,111 @@ function lyricistLabel() {
   return item.model ? `${item.label} (${item.model})` : item.label;
 }
 
+function numberOrNull(id) {
+  const value = $(id).value.trim();
+  return value === "" ? null : Number(value);
+}
+
+function advancedPayload() {
+  return {
+    instrumental: instrumentalInput.checked,
+    vocal_language: languageSelect.value || null,
+    bpm: numberOrNull("bpm"),
+    key_scale: keyInput.value.trim() || null,
+    time_signature: timeSignatureSelect.value || null,
+    seed: numberOrNull("seed"),
+    model: modelSelect.value || null,
+    inference_steps: numberOrNull("steps"),
+    guidance_scale: numberOrNull("guidance"),
+  };
+}
+
+function renderLanguages(languages) {
+  languageSelect.textContent = "";
+  for (const language of languages || []) {
+    const option = document.createElement("option");
+    option.value = language.code;
+    option.textContent = language.label;
+    languageSelect.appendChild(option);
+  }
+  languageSelect.value = state.config?.vocal_language || "en";
+}
+
+function renderTimeSignatures(values) {
+  timeSignatureSelect.textContent = "";
+  const auto = document.createElement("option");
+  auto.value = "";
+  auto.textContent = "auto";
+  timeSignatureSelect.appendChild(auto);
+  for (const value of values || []) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    timeSignatureSelect.appendChild(option);
+  }
+}
+
+async function loadModels() {
+  try {
+    const { models } = await api("/api/models");
+    const selected = modelSelect.value;
+    modelSelect.textContent = "";
+    const auto = document.createElement("option");
+    auto.value = "";
+    auto.textContent = "server default";
+    modelSelect.appendChild(auto);
+    for (const name of models || []) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      modelSelect.appendChild(option);
+    }
+    if (selected) modelSelect.value = selected;
+  } catch (err) {
+    // The server may be offline; the default option is still usable.
+  }
+}
+
+async function loadLoraStatus() {
+  try {
+    const { status } = await api("/api/lora");
+    state.lora = status || {};
+    if (!state.lora.lora_loaded) {
+      loraStatus.textContent = "no adapter loaded";
+      loraToggle.textContent = "Use";
+    } else {
+      const adapters = (state.lora.adapters || [])
+        .map((adapter) => adapter.name || adapter)
+        .join(", ");
+      loraStatus.textContent =
+        `${state.lora.use_lora ? "active" : "bypassed"} · ` +
+        `scale ${state.lora.lora_scale ?? 1}` +
+        (adapters ? ` · ${adapters}` : "");
+      loraToggle.textContent = state.lora.use_lora ? "Bypass" : "Use";
+    }
+    if (state.lora.lora_scale !== undefined) {
+      loraScale.value = state.lora.lora_scale;
+    }
+  } catch (err) {
+    loraStatus.textContent = "status unavailable";
+  }
+}
+
+async function loraAction(path, body, label) {
+  try {
+    await api(path, { method: "POST", body: JSON.stringify(body) });
+    await loadLoraStatus();
+  } catch (err) {
+    showError(`${label}: ${err.message}`);
+  }
+}
+
 function updateNotice() {
-  if (state.mode === "topic" && state.checked && !lyricistAvailable()) {
+  const instrumental = instrumentalInput.checked;
+  if (
+    state.mode === "topic" && !instrumental && state.checked &&
+    !lyricistAvailable()
+  ) {
     const item = selectedLyricist();
     const reason = item?.error || "not configured";
     showNotice(`The selected lyricist is unavailable: ${reason} Pick another, configure it in ~/.canturia.yaml, or use Write lyrics.`);
@@ -462,17 +649,21 @@ function updateNotice() {
 }
 
 function updateGoState() {
+  const instrumental = instrumentalInput.checked;
   const topicUnavailable =
-    state.checked && state.mode === "topic" && !lyricistAvailable();
+    state.checked && state.mode === "topic" && !instrumental &&
+    !lyricistAvailable();
   go.disabled =
     state.busy || topicUnavailable || (state.checked && state.aceOk === false);
   go.textContent = state.busy ? "Composing…" : "Generate";
   previewBtn.disabled =
-    state.busy || state.mode !== "topic" || topicUnavailable;
+    state.busy || state.mode !== "topic" || topicUnavailable || instrumental;
   surprise.disabled =
     state.busy || state.aceOk === false || state.llm === false;
-  singBtn.disabled = state.busy || state.aceOk === false;
-  lyricistSelect.disabled = state.mode !== "topic" || state.busy;
+  singBtn.disabled =
+    state.busy || state.aceOk === false || instrumental;
+  lyricistSelect.disabled =
+    state.mode !== "topic" || instrumental || state.busy;
 }
 
 function setMode(mode) {
@@ -487,10 +678,12 @@ function setMode(mode) {
   text.placeholder = mode === "lyrics"
     ? "[Verse]\nMorning light across the floor\n[Chorus]\nGrow a little every day"
     : "a warm folk song about growing up by the sea…";
-  modeHint.textContent = mode === "lyrics"
-    ? "Your words go straight to ACE-Step; the length you choose is honoured exactly."
-    : `We ask ${lyricistLabel()} to write the lyrics, then send them to ACE-Step.`;
-  if (mode !== "topic") lyricsPanel.hidden = true;
+  modeHint.textContent = instrumentalInput.checked
+    ? "Instrumental: lyrics are skipped; ACE-Step renders the genre and style."
+    : (mode === "lyrics"
+      ? "Your words go straight to ACE-Step; the length you choose is honoured exactly."
+      : `We ask ${lyricistLabel()} to write the lyrics, then send them to ACE-Step.`);
+  if (mode !== "topic" || instrumentalInput.checked) lyricsPanel.hidden = true;
   updateNotice();
   updateGoState();
 }
@@ -641,7 +834,14 @@ function addCard(song) {
   const meta = document.createElement("div");
   meta.className = "meta";
   const bits = [labelForGenre(song.genre), formatDuration(song.duration)];
-  if (song.metas && song.metas.bpm && song.metas.bpm !== "N/A") {
+  if (song.bpm) bits.push(`${song.bpm} BPM`);
+  if (song.key_scale) bits.push(song.key_scale);
+  if (song.time_signature) bits.push(song.time_signature);
+  if (song.instrumental) bits.push("instrumental");
+  if (
+    !song.bpm && song.metas && song.metas.bpm &&
+    song.metas.bpm !== "N/A"
+  ) {
     bits.push(`${song.metas.bpm} BPM`);
   }
   if (song.mode === "topic") {
@@ -761,6 +961,9 @@ function addLibraryCard(song) {
   const bits = [];
   if (song.genre) bits.push(labelForGenre(song.genre));
   if (song.duration) bits.push(formatDuration(song.duration));
+  if (song.bpm) bits.push(`${song.bpm} BPM`);
+  if (song.key_scale) bits.push(song.key_scale);
+  if (song.instrumental) bits.push("instrumental");
   if (song.lyrics_writer && song.lyrics_writer !== "user") {
     bits.push(`lyrics: ${libraryWriter(song)}`);
   }
@@ -887,7 +1090,7 @@ async function generate(modeOverride) {
     text.value = source;
   }
   if (!source) { text.focus(); return; }
-  if (mode === "topic" && !lyricistAvailable()) {
+  if (mode === "topic" && !instrumentalInput.checked && !lyricistAvailable()) {
     showError("Choose an available lyricist, or use Write lyrics.");
     return;
   }
@@ -911,6 +1114,7 @@ async function generate(modeOverride) {
       style: styleInput.value.trim(),
       duration,
       lyricist: state.lyricist,
+      ...advancedPayload(),
     }, pendingLabel);
   } catch (err) {
     showError(err.message);
@@ -939,6 +1143,10 @@ async function pollLyricsJob(jobId, onProgress) {
 async function previewLyrics() {
   clearError();
   if (state.mode !== "topic") return;
+  if (instrumentalInput.checked) {
+    showError("Instrumental songs have no lyrics to preview.");
+    return;
+  }
   if (!lyricistAvailable()) {
     showError("Choose an available lyricist, or use Write lyrics.");
     return;
@@ -1011,6 +1219,7 @@ async function singPreview() {
       genre: state.genre || "folk",
       style: styleInput.value.trim(),
       duration,
+      ...advancedPayload(),
     }, "Singing the preview…");
     lyricsPanel.hidden = true;
   } catch (err) {
@@ -1035,6 +1244,16 @@ async function boot() {
     };
   });
   durationInput.oninput = () => setDuration(durationInput.value);
+  instrumentalInput.onchange = () => {
+    if (instrumentalInput.checked) lyricsPanel.hidden = true;
+    if (state.mode === "topic") {
+      modeHint.textContent = instrumentalInput.checked
+        ? "Instrumental: lyrics are skipped; ACE-Step renders the genre and style."
+        : `We ask ${lyricistLabel()} to write the lyrics, then send them to ACE-Step.`;
+    }
+    updateNotice();
+    updateGoState();
+  };
   go.onclick = () => generate();
   previewBtn.onclick = previewLyrics;
   singBtn.onclick = singPreview;
@@ -1052,6 +1271,37 @@ async function boot() {
   };
   pill.onclick = checkStatus;
   $("refresh-library").onclick = loadLibrary;
+  $("lora-load").onclick = () => {
+    const path = loraPath.value.trim();
+    if (!path) { showError("Enter the server path to a LoRA adapter."); return; }
+    loraAction("/api/lora/load", {
+      path,
+      name: loraName.value.trim() || null,
+    }, "LoRA load");
+  };
+  $("lora-unload").onclick = () => {
+    loraAction("/api/lora/unload", {}, "LoRA unload");
+  };
+  loraToggle.onclick = () => {
+    if (!state.lora || !state.lora.lora_loaded) {
+      showError("Load a LoRA adapter first.");
+      return;
+    }
+    loraAction("/api/lora/toggle", {
+      use_lora: !state.lora.use_lora,
+    }, "LoRA toggle");
+  };
+  $("lora-scale-apply").onclick = () => {
+    const scale = Number(loraScale.value);
+    if (!Number.isFinite(scale) || scale < 0 || scale > 1) {
+      showError("LoRA scale must be between 0 and 1.");
+      return;
+    }
+    loraAction("/api/lora/scale", {
+      scale,
+      name: loraName.value.trim() || null,
+    }, "LoRA scale");
+  };
   $("reveal-library").onclick = async () => {
     try {
       await api("/api/library/reveal", { method: "POST" });
@@ -1077,6 +1327,8 @@ async function boot() {
     if (config.style) styleInput.value = config.style;
     renderGenres(config.genres || []);
     renderDurations(config.durations || [30, 45, 60]);
+    renderLanguages(config.vocal_languages || []);
+    renderTimeSignatures(config.time_signatures || []);
     if (config.auth && !config.desktop) lock.style.display = "";
     if (config.desktop) $("reveal-library").style.display = "";
     setMode(config.default_mode || "topic");
@@ -1091,7 +1343,10 @@ async function boot() {
   };
 
   updateEmpty();
-  checkStatus();
+  checkStatus().then(() => {
+    loadModels();
+    loadLoraStatus();
+  });
   loadLibrary();
 }
 

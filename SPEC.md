@@ -323,19 +323,20 @@ tests/
    `canturia compare`, web Preview lyrics → edit → Sing, 0.3.2.
 4. **M4 — Library and secrets.** Persistent saved-song library, ACE-Step
    quality warnings, OS keychain storage in the desktop app, 0.3.3.
-5. **M5 — Optional depth.** Hidden/advanced controls: instrumental, vocal
-   language, BPM, key, time signature, inference steps, LoRA selection. Same
-   "simple by default" rule as Limn.
+5. **M5 — Optional depth.** Instrumental, vocal language, BPM, key, time
+   signature, seed, model, inference steps, guidance, and server-side LoRA,
+   under an Options disclosure, 0.4.0.
 
-## 12. Future controls (documented, not in the v1 UI)
+## 12. Advanced controls (Options)
 
-ACE-Step accepts these; they are deliberately omitted from the main screen:
+ACE-Step accepts these; they live under an **Options** disclosure so the main
+screen stays simple:
 
-- `instrumental` (topic mode)
-- `vocal_language` (already fixed to `en`; expose per request later)
+- `instrumental` (skips lyrics)
+- `vocal_language`
 - `bpm`, `key_scale`, `time_signature`
 - `inference_steps`, `guidance_scale`, `seed`
 - `model` (DiT variant)
-- LoRA load/toggle/scale endpoints
+- LoRA load/toggle/scale/status (server-side)
 
-When added, they belong under an Options disclosure, not in the main flow.
+CLI flags mirror the request controls, and `canturia lora` manages adapters.

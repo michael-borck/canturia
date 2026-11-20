@@ -42,6 +42,48 @@ def test_bare_text_routes_to_lyrics(
     assert captured["genre"] == "folk"
 
 
+def test_advanced_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(mode: str, text: str, **kwargs: object) -> None:
+        captured.update(mode=mode, text=text, **kwargs)
+
+    monkeypatch.setattr("canturia.cli._run_generate", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "[Verse]\nhello",
+            "--bpm",
+            "90",
+            "--instrumental",
+            "--language",
+            "es",
+            "--key",
+            "C major",
+            "--time-signature",
+            "4/4",
+            "--seed",
+            "7",
+            "--steps",
+            "20",
+            "--guidance",
+            "6.5",
+            "--model",
+            "acestep-v15-turbo",
+        ],
+    )
+    assert result.exit_code == 0
+    assert captured["bpm"] == 90
+    assert captured["instrumental"] is True
+    assert captured["language"] == "es"
+    assert captured["key_scale"] == "C major"
+    assert captured["time_signature"] == "4/4"
+    assert captured["seed"] == 7
+    assert captured["steps"] == 20
+    assert captured["guidance"] == 6.5
+    assert captured["model"] == "acestep-v15-turbo"
+
+
 def test_describe_routes_to_describe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

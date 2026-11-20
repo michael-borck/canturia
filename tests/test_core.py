@@ -77,6 +77,34 @@ def test_build_request_lyrics_and_describe() -> None:
     assert already.sample_query.lower().count("in english") == 1
 
 
+def test_build_request_advanced_and_instrumental() -> None:
+    request = build_request(
+        "lyrics",
+        "words",
+        "folk",
+        bpm=90,
+        key_scale="C major",
+        time_signature="4/4",
+        seed=7,
+        inference_steps=20,
+        guidance_scale=6.5,
+    )
+    assert request.bpm == 90
+    assert request.key_scale == "C major"
+    assert request.time_signature == "4/4"
+    assert request.seed == 7
+    assert request.inference_steps == 20
+    assert request.guidance_scale == 6.5
+
+    instrumental = build_request(
+        "topic", "a rainy street", "folk", instrumental=True
+    )
+    assert instrumental.instrumental is True
+    assert instrumental.lyrics == "[Instrumental]"
+    assert instrumental.sample_query is None
+    assert "a rainy street" in instrumental.prompt
+
+
 def test_build_request_rejects_empty_and_bad_mode() -> None:
     with pytest.raises(ValueError):
         build_request("lyrics", "   ", "folk")
