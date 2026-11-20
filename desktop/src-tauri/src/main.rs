@@ -17,9 +17,10 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri_plugin_updater::UpdaterExt;
 
 /// The canturia release the runtime installs; bump with PyPI releases.
-const CANTURIA_VERSION: &str = "0.4.2";
+const CANTURIA_VERSION: &str = "0.4.3";
 
 struct Sidecar(Mutex<Option<Child>>);
 
@@ -27,6 +28,13 @@ struct Sidecar(Mutex<Option<Child>>);
 struct ServerInfo {
     port: u16,
     token: String,
+}
+
+#[derive(Serialize)]
+struct UpdateInfo {
+    available: bool,
+    version: Option<String>,
+    notes: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -542,6 +550,37 @@ fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<ServerInfo, String> {
 }
 
 #[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<UpdateInfo, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+    Ok(match update {
+        Some(update) => UpdateInfo {
+            available: true,
+            version: Some(update.version.clone()),
+            notes: update.body.clone(),
+        },
+        None => UpdateInfo {
+            available: false,
+            version: None,
+            notes: None,
+        },
+    })
+}
+
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    if let Some(update) = updater.check().await.map_err(|e| e.to_string())? {
+        update
+            .download_and_install(|_chunk, _total| {}, || {})
+            .await
+            .map_err(|e| e.to_string())?;
+        app.restart();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn start_server(app: AppHandle, update: bool) -> Result<ServerInfo, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if get_settings().base_url.trim().is_empty() {
@@ -567,10 +606,13 @@ async fn restart_server(app: AppHandle) -> Result<ServerInfo, String> {
 fn main() {
     migrate_secrets();
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Sidecar(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             get_settings,
             save_settings,
+            check_for_update,
+            install_update,
             start_server,
             restart_server
         ])

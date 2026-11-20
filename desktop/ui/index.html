@@ -33,6 +33,7 @@
     background: transparent; color: var(--ink); padding: .3rem .7rem; cursor: pointer;
   }
   header button:hover { border-color: var(--muted); }
+  header button.update-available { color: var(--accent); border-color: var(--accent); }
   main { flex: 1; position: relative; min-height: 0; }
   iframe#app {
     width: 100%; height: 100%; border: 0; display: none; background: var(--bg);
@@ -80,6 +81,7 @@
 <header>
   <span class="title">Canturía</span>
   <span id="status">starting…</span>
+  <button id="btn-update" title="Check for a newer Canturía">Updates</button>
   <button id="btn-settings" title="Server settings">Settings</button>
 </header>
 <main>
@@ -272,7 +274,47 @@ $("btn-settings").onclick = async () => {
   showSettings(Boolean(serverInfo));
 };
 
+async function checkForUpdates(silent) {
+  const button = $("btn-update");
+  if (!silent) {
+    button.disabled = true;
+    button.textContent = "Checking…";
+  }
+  try {
+    const info = await invoke("check_for_update");
+    if (info.available) {
+      button.textContent = `Update ${info.version || ""}`.trim();
+      button.classList.add("update-available");
+      if (!silent) {
+        const install = window.confirm(
+          `Canturía ${info.version} is available.\n\nInstall now? The app will restart.`
+        );
+        if (install) {
+          $("status").textContent = "Downloading update…";
+          await invoke("install_update");
+        } else {
+          $("status").textContent = `Update ${info.version} available`;
+        }
+      }
+    } else if (!silent) {
+      button.textContent = "Updates";
+      button.classList.remove("update-available");
+      $("status").textContent = "Canturía is up to date";
+    }
+  } catch (error) {
+    if (!silent) {
+      button.textContent = "Updates";
+      $("status").textContent = "Update check failed";
+    }
+  } finally {
+    if (!silent) button.disabled = false;
+  }
+}
+
+$("btn-update").onclick = () => checkForUpdates(false);
+
 (async function init() {
+  setTimeout(() => checkForUpdates(true), 2000);
   const settings = await loadSettingsForm();
   if (!settings.base_url) {
     $("status").textContent = "set up your server";

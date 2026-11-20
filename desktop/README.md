@@ -46,9 +46,10 @@ Bump `CANTURIA_VERSION` (if a new release is on PyPI) and the versions in
 git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
 ```
 
-A CI workflow can build macOS (arm64 + x86_64), Windows (msi/exe) and Linux
-(AppImage/deb/rpm) installers with `tauri-action`. Builds are unsigned until a
-signing identity is configured.
+A CI workflow builds macOS (arm64 + x86_64), Windows (msi/exe) and Linux
+(AppImage/deb) installers with `tauri-action`. macOS is signed/notarized. The
+app uses the Tauri updater with a per-app `TAURI_SIGNING_PRIVATE_KEY`; never
+reuse another app's updater key.
 
 ## Icons
 

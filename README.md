@@ -248,14 +248,16 @@ path never uses it to write lyrics.
 
 The Tauri v2 shell lives in `desktop/`. It bootstraps a private Python runtime
 with `uv`, runs `canturia serve` on a random localhost port, and shows the web
-UI in the window. Settings writes `~/.canturia.yaml`.
+UI in the window. Settings writes `~/.canturia.yaml`. It checks for signed
+updates from the latest GitHub release at launch and from the **Updates**
+button; the first install is a manual download.
 
 ```bash
 cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.4.2` from PyPI. For local Python
+The sidecar installs `canturia[serve]==0.4.3` from PyPI. For local Python
 changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
 instead.
 
@@ -291,7 +293,7 @@ uv run --no-sync pytest
 - **M1** — Python core, CLI, web UI (done).
 - **M2** — Tauri desktop shell with a Settings sheet for the server URL,
   credentials, and lyricist/BYOK, uv-bootstrapped sidecar, installers in CI
-  (done; PyPI 0.4.2).
+  (done; PyPI 0.4.3).
 - **M3** — Optional advanced controls, documented but hidden by default: BPM,
   key, time signature, instrumental, vocal language, LoRA selection.
 

@@ -73,9 +73,13 @@ signed Windows build is a future release task.
 
 ## Updating
 
-There is no auto-updater yet. Download the latest installer from
-https://michael-borck.github.io/canturia/ and replace the app. The sidecar
-runtime updates on launch when `CANTURIA_VERSION` changes.
+The desktop app checks for updates at launch and from the **Updates** button.
+It downloads, installs, and restarts when you confirm. The first install is a
+manual download from https://michael-borck.github.io/canturia/.
+
+Updater artifacts are signed with the per-app key; `latest.json` lives on the
+latest GitHub release. If an update check fails, check the release and network,
+then use the landing page as a fallback.
 
 ## CLI
 

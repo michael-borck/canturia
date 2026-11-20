@@ -22,7 +22,7 @@ jobs:
       install-command: npm ci --prefix desktop
       cache: ""
       preflight-command: ""
-      updater: false
+      updater: true
       release-body: |
         Canturía — words into a song, rendered by your own ACE-Step server.
 
