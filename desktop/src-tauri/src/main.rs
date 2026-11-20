@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 
 /// The canturia release the runtime installs; bump with PyPI releases.
-const CANTURIA_VERSION: &str = "0.3.2";
+const CANTURIA_VERSION: &str = "0.3.3";
 
 struct Sidecar(Mutex<Option<Child>>);
 
@@ -82,6 +82,105 @@ fn set_str(map: &mut serde_yaml::Mapping, key: &str, value: &str) {
     }
 }
 
+const KEYCHAIN_SERVICE: &str = "org.borck.canturia";
+const SECRET_ACE_KEY: &str = "ace-api-key";
+const SECRET_ACE_PASSWORD: &str = "ace-password";
+const SECRET_OPENAI_KEY: &str = "openai-api-key";
+
+fn os_keychain() -> bool {
+    cfg!(any(target_os = "macos", target_os = "windows"))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn secret_get(name: &str) -> Option<String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, name).ok()?;
+    entry.get_password().ok()
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn secret_set(name: &str, value: &str) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new(KEYCHAIN_SERVICE, name).map_err(|e| e.to_string())?;
+    if value.trim().is_empty() {
+        let _ = entry.delete_credential();
+        Ok(())
+    } else {
+        entry
+            .set_password(value.trim())
+            .map_err(|e| format!("Could not store the secret in the OS keychain: {e}"))
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn secret_get(_name: &str) -> Option<String> {
+    None
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn secret_set(_name: &str, _value: &str) -> Result<(), String> {
+    Ok(())
+}
+
+/// Move legacy plaintext secrets from ~/.canturia.yaml into the OS keychain.
+fn migrate_secrets() {
+    if !os_keychain() {
+        return;
+    }
+    let Ok(path) = config_path() else { return; };
+    let Ok(text) = fs::read_to_string(&path) else { return; };
+    let Ok(mut root) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        return;
+    };
+    let api_key = yaml_str(&root, "api_key");
+    let password = yaml_str(&root, "password");
+    let openai_key = yaml_str_path(
+        &root,
+        &["lyricists", "openai-compatible", "api_key"],
+    );
+    let mut changed = false;
+    if !api_key.is_empty() && secret_set(SECRET_ACE_KEY, &api_key).is_ok() {
+        changed = true;
+    }
+    if !password.is_empty() && secret_set(SECRET_ACE_PASSWORD, &password).is_ok() {
+        changed = true;
+    }
+    if !openai_key.is_empty()
+        && secret_set(SECRET_OPENAI_KEY, &openai_key).is_ok()
+    {
+        changed = true;
+    }
+    if !changed {
+        return;
+    }
+    if let serde_yaml::Value::Mapping(map) = &mut root {
+        if secret_get(SECRET_ACE_KEY).is_some() {
+            map.remove(&serde_yaml::Value::String("api_key".into()));
+        }
+        if secret_get(SECRET_ACE_PASSWORD).is_some() {
+            map.remove(&serde_yaml::Value::String("password".into()));
+        }
+        if secret_get(SECRET_OPENAI_KEY).is_some() {
+            if let Some(serde_yaml::Value::Mapping(lyricists)) =
+                map.get_mut("lyricists")
+            {
+                if let Some(serde_yaml::Value::Mapping(block)) =
+                    lyricists.get_mut("openai-compatible")
+                {
+                    block.remove(&serde_yaml::Value::String("api_key".into()));
+                }
+            }
+        }
+    }
+    if let Ok(text) = serde_yaml::to_string(&root) {
+        let _ = fs::write(&path, text);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        }
+    }
+}
+
 #[tauri::command]
 fn get_settings() -> Settings {
     let Ok(path) = config_path() else {
@@ -109,11 +208,22 @@ fn get_settings() -> Settings {
             value
         }
     };
+    let api_key = secret_get(SECRET_ACE_KEY)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| yaml_str(&root, "api_key"));
+    let password = secret_get(SECRET_ACE_PASSWORD)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| yaml_str(&root, "password"));
+    let openai_key = secret_get(SECRET_OPENAI_KEY)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            yaml_str_path(&root, &["lyricists", "openai-compatible", "api_key"])
+        });
     Settings {
         base_url: yaml_str(&root, "base_url"),
-        api_key: yaml_str(&root, "api_key"),
+        api_key,
         username: yaml_str(&root, "username"),
-        password: yaml_str(&root, "password"),
+        password,
         lyricist: yaml_str(&root, "lyricist"),
         ollama_url,
         ollama_model,
@@ -125,10 +235,7 @@ fn get_settings() -> Settings {
             &root,
             &["lyricists", "openai-compatible", "model"],
         ),
-        openai_key: yaml_str_path(
-            &root,
-            &["lyricists", "openai-compatible", "api_key"],
-        ),
+        openai_key,
     }
 }
 
@@ -149,6 +256,11 @@ fn save_settings(settings: Settings) -> Result<(), String> {
         return Err("Pick a lyricist: ollama, openai-compatible, or acestep".into());
     }
     let path = config_path()?;
+    if os_keychain() {
+        secret_set(SECRET_ACE_KEY, &settings.api_key)?;
+        secret_set(SECRET_ACE_PASSWORD, &settings.password)?;
+        secret_set(SECRET_OPENAI_KEY, &settings.openai_key)?;
+    }
 
     // Preserve an existing config's other keys; only update what we own.
     let mut root = fs::read_to_string(&path)
@@ -174,7 +286,9 @@ fn save_settings(settings: Settings) -> Result<(), String> {
     ] {
         let trimmed = value.trim();
         let value_key = serde_yaml::Value::String(key.to_string());
-        if trimmed.is_empty() {
+        if os_keychain() && (key == "api_key" || key == "password") {
+            map.remove(&value_key);
+        } else if trimmed.is_empty() {
             map.remove(&value_key);
         } else {
             map.insert(value_key, trimmed.to_string().into());
@@ -206,7 +320,12 @@ fn save_settings(settings: Settings) -> Result<(), String> {
         if let serde_yaml::Value::Mapping(block) = &mut openai {
             set_str(block, "base_url", &settings.openai_url);
             set_str(block, "model", &settings.openai_model);
-            set_str(block, "api_key", &settings.openai_key);
+            let openai_key = if os_keychain() {
+                ""
+            } else {
+                settings.openai_key.as_str()
+            };
+            set_str(block, "api_key", openai_key);
         }
         blocks.insert("openai-compatible".into(), openai);
     }
@@ -378,8 +497,8 @@ fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<ServerInfo, String> {
 
     status(app, "Starting Canturía…");
     let token = uuid::Uuid::new_v4().simple().to_string();
-    let child = command(bin)
-        .env("CANTURIA_SERVE_PASSWORD", &token)
+    let mut cmd = command(bin);
+    cmd.env("CANTURIA_SERVE_PASSWORD", &token)
         .args([
             "serve",
             "--no-browser",
@@ -390,7 +509,17 @@ fn spawn_sidecar(app: &AppHandle, bin: &Path) -> Result<ServerInfo, String> {
         ])
         .arg(port.to_string())
         .arg("--out-dir")
-        .arg(&out_dir)
+        .arg(&out_dir);
+    if !settings.api_key.is_empty() {
+        cmd.env("CANTURIA_API_KEY", &settings.api_key);
+    }
+    if !settings.password.is_empty() {
+        cmd.env("CANTURIA_PASSWORD", &settings.password);
+    }
+    if !settings.openai_key.is_empty() {
+        cmd.env("CANTURIA_OPENAI_API_KEY", &settings.openai_key);
+    }
+    let child = cmd
         .spawn()
         .map_err(|e| format!("Could not start canturia: {e}"))?;
 
@@ -436,6 +565,7 @@ async fn restart_server(app: AppHandle) -> Result<ServerInfo, String> {
 }
 
 fn main() {
+    migrate_secrets();
     tauri::Builder::default()
         .manage(Sidecar(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![

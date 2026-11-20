@@ -32,6 +32,7 @@ from canturia.core import (
     save_song,
 )
 from canturia.core import lyrics as lyrics_only
+from canturia.library import list_songs
 from canturia.lyricists import LyricistError
 from canturia.providers import AceStepError, OllamaError
 
@@ -170,6 +171,8 @@ def _run_generate(
             on_progress=lambda message: status.update(f"Generating… {message}"),
         )
 
+    for warning in generation.lyrics_warnings:
+        console.print(f"[yellow]Lyricist warning: {warning}[/yellow]")
     for song in generation.songs:
         path, sidecar = save_song(generation, song, out)
         console.print(f"Saved: [bold green]{path}[/bold green]")
@@ -584,6 +587,8 @@ def lyrics(
         if result.model:
             header += f" · {result.model}"
         console.print(f"[dim]{header}[/dim]")
+        for warning in result.warnings:
+            console.print(f"[yellow]Warning: {warning}[/yellow]")
         console.print(result.lyrics)
         if out:
             target = Path(out).expanduser()
@@ -692,6 +697,8 @@ def compare(
             if result.error:
                 console.print(f"[red]{result.error}[/red]")
             else:
+                for warning in result.warnings:
+                    console.print(f"[yellow]Warning: {warning}[/yellow]")
                 console.print(result.lyrics)
     except (ConfigurationError, AceStepError, OllamaError, LyricistError, ValueError) as e:
         err_console.print(str(e))
@@ -769,6 +776,48 @@ def health_cmd(
 
 
 app.command(name="health")(health_cmd)
+
+
+@app.command(name="library")
+def library_cmd(
+    out_dir: str | None = typer.Option(
+        None,
+        "--out-dir",
+        help="Saved-song folder (default: serve.out_dir).",
+        show_default=False,
+    ),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file (default: ./canturia.yaml).",
+        show_default=False,
+    ),
+) -> None:
+    """List songs saved by the web/desktop app."""
+    try:
+        cfg = load_config(config)
+        directory = out_dir or resolve_serve_settings(cfg)["out_dir"]
+        songs = list_songs(directory)
+        if not songs:
+            console.print(f"[dim]No saved songs in {directory}[/dim]")
+            return
+        table = Table(show_header=True, box=None)
+        table.add_column("Title")
+        table.add_column("Genre")
+        table.add_column("Length")
+        table.add_column("File")
+        for song in songs:
+            duration = song.get("duration")
+            length = f"{float(duration):g}s" if duration else ""
+            table.add_row(
+                str(song.get("title") or ""),
+                str(song.get("genre") or ""),
+                length,
+                str(song.get("filename") or ""),
+            )
+        console.print(table)
+        console.print(f"[dim]{len(songs)} saved song(s) in {directory}[/dim]")
+    except (ConfigurationError, ValueError) as e:
+        err_console.print(str(e))
+        raise typer.Exit(code=1) from None
 
 
 @app.command()

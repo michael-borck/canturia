@@ -10,10 +10,10 @@ a genre and a length, and get an MP3 from an ACE-Step 1.5 server you point it
 at. Same shape as Limn: Python core + Typer CLI + FastAPI single page + Tauri v2
 shell. PyPI package and CLI: `canturia`.
 
-## Status (0.3.2)
+## Status (0.3.3)
 
 - Python core, ACE-Step client, lyricist providers, CLI, web UI, Help sheet,
-  password gate, tests — done.
+  password gate, saved-song library, tests — done.
 - **Lyricist providers**: `ollama` (default), `openai-compatible` (BYOK), and
   `acestep` (experimental, via `/v1/create_sample`). `canturia lyrics` writes
   lyrics only; `canturia compare` runs several side by side.
@@ -29,15 +29,16 @@ shell. PyPI package and CLI: `canturia`.
   use it; the ACE-Step lyricist is opt-in for comparison.
 - `resident: true` is live on the server. It keeps `thinking: true`, metadata
   backfill, Surprise, and the ACE-Step lyricist available.
-- Tauri shell, icons, `cargo check`, CI workflows, lyricist/BYOK Settings — in
-  the repo. **v0.3.1 desktop release is signed/notarized via the shared app-hq
-  workflow** (macOS arm64 + Intel, Windows, Linux) and adds stable ASCII asset
-  aliases for the landing page.
+- Tauri shell, icons, `cargo check`, CI workflows, lyricist/BYOK Settings,
+  OS-keychain secrets, and the saved-song library — in the repo.
+  **v0.3.3 desktop release is signed/notarized via the shared app-hq workflow**
+  (macOS arm64 + Intel, Windows, Linux) and adds stable ASCII asset aliases for
+  the landing page.
 - Landing page in `landing/` (platform detection, direct stable download
   links), deployed by `.github/workflows/pages.yml` to
   https://michael-borck.github.io/canturia/.
-- 63 tests, ruff clean, basedpyright 0 errors.
-- Published on PyPI as `canturia`; 0.3.2 is the current source version.
+- 70 tests, ruff clean, basedpyright 0 errors.
+- Published on PyPI as `canturia`; 0.3.3 is the current source version.
 
 ## Local commands
 
@@ -123,8 +124,11 @@ uv run --no-sync canturia "[Verse]\nMorning light" -g folk -t 10 -o /tmp/x.mp3 \
   (experimental). Preview/edit before singing.
 - Genre chips + free-text style; length presets 30/45/60 + custom 10–600 s.
 - Session gallery in memory; Save to `~/Music/Canturia` + JSON sidecar;
-  Download/Again/Delete.
+  Download/Again/Delete. A separate saved-song library scans that folder and
+  supports play/download/lyrics/delete.
 - Shared app password for hosted `serve`; upstream Bearer/Basic separately.
+- Desktop secrets live in the macOS Keychain / Windows Credential Manager and
+  are injected into the sidecar environment; YAML keeps non-secret settings.
 - In-app Help sheet plus inline hints; no separate docs page in the UI.
 - No advanced controls in v1; document BPM/key/time signature/instrumental/
   language/LoRA for later.

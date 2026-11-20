@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -208,6 +209,38 @@ def test_page_and_config(tmp_path: Path) -> None:
         options = client.get("/api/lyricists").json()
         assert options["default"] == "ollama"
         assert any(item["name"] == "openai-compatible" for item in options["lyricists"])
+
+
+def test_library_endpoints(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    audio = tmp_path / "saved.mp3"
+    audio.write_bytes(b"ID3saved")
+    audio.with_suffix(".mp3.json").write_text(
+        json.dumps(
+            {
+                "source_text": "a saved song",
+                "genre": "folk",
+                "duration": 30,
+                "lyrics": "[Verse]\nhello",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with TestClient(make_app(tmp_path)) as client:
+        songs = client.get("/api/library").json()["songs"]
+        assert songs[0]["id"] == "saved.mp3"
+        assert songs[0]["title"] == "a saved song"
+        assert client.get("/api/library/saved.mp3").content == b"ID3saved"
+        download = client.get("/api/library/saved.mp3?download=1")
+        assert "attachment" in download.headers["content-disposition"]
+        assert client.delete("/api/library/saved.mp3").status_code == 200
+        assert client.get("/api/library/saved.mp3").status_code == 404
+
+    audio.write_bytes(b"ID3saved")
+    monkeypatch.setattr("canturia.serve.reveal_folder", lambda path: None)
+    with TestClient(make_app(tmp_path, desktop=True)) as client:
+        assert client.post("/api/library/reveal").status_code == 200
 
 
 def test_password_gate(tmp_path: Path) -> None:

@@ -115,6 +115,11 @@
     color: var(--ink); background: var(--bg); border: 1px solid var(--line);
     border-radius: 8px; padding: .6rem .7rem; outline: none;
   }
+  .warning {
+    font-size: .78rem; color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+    border-radius: 7px; padding: .35rem .55rem;
+  }
   .bar { display: flex; align-items: center; gap: .6rem; margin-top: .8rem; flex-wrap: wrap; }
   button { font: inherit; }
   .primary {
@@ -141,10 +146,16 @@
     border: 1px solid var(--danger); color: var(--danger); font-size: .9rem;
     white-space: pre-wrap;
   }
-  #gallery {
+  #gallery, #library {
     margin-top: 2rem; display: grid; gap: 1rem;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   }
+  #library { margin-top: 1rem; }
+  .library-head {
+    display: flex; align-items: baseline; gap: .6rem; margin-top: 2.8rem;
+  }
+  .library-head h2 { font-size: 1.08rem; margin: 0; }
+  .library-head .linkish { margin-left: auto; }
   .card {
     background: var(--panel); border: 1px solid var(--line);
     border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
@@ -269,6 +280,7 @@
     </div>
     <textarea class="lyrics-edit" id="lyrics-edit"
       placeholder="Lyrics will appear here. Edit them, then sing."></textarea>
+    <div class="warning" id="lyrics-warning" style="display:none"></div>
     <div class="bar">
       <button class="primary" id="sing" type="button">Sing these lyrics</button>
       <span class="hint">Edits go to ACE-Step with the exact length.</span>
@@ -279,6 +291,14 @@
   <div id="error"></div>
   <div id="gallery"></div>
   <p class="empty" id="empty">Nothing yet. Songs appear here — kept in memory until you save them.</p>
+
+  <div class="library-head">
+    <h2>Saved songs</h2>
+    <button class="linkish" id="reveal-library" type="button" style="display:none">Open folder</button>
+    <button class="linkish" id="refresh-library" type="button">Refresh</button>
+  </div>
+  <div id="library"></div>
+  <p class="empty" id="library-empty">Saved songs appear here when you press Save.</p>
 
   <dialog id="help-dialog">
     <h2>How Canturía works</h2>
@@ -325,6 +345,7 @@
 const $ = (id) => document.getElementById(id);
 const TOKEN = window.CANTURIA_TOKEN || "";
 const gallery = $("gallery"), empty = $("empty"), errBox = $("error");
+const library = $("library"), libraryEmpty = $("library-empty");
 const text = $("text"), go = $("go"), surprise = $("surprise"), notice = $("notice");
 const durationInput = $("duration"), styleInput = $("style");
 const pill = $("server-pill"), lock = $("lock");
@@ -332,6 +353,7 @@ const modeHint = $("mode-hint"), helpDialog = $("help-dialog");
 const lyricistSelect = $("lyricist"), lyricistNote = $("lyricist-note");
 const previewBtn = $("preview"), lyricsPanel = $("lyrics-panel");
 const lyricsEdit = $("lyrics-edit"), lyricsProvider = $("lyrics-provider");
+const lyricsWarning = $("lyrics-warning");
 const singBtn = $("sing"), lyricsClose = $("lyrics-close");
 
 const SURPRISE_PROMPTS = [
@@ -629,6 +651,14 @@ function addCard(song) {
   if (song.mode === "describe") bits.push("invented by ACE-Step");
   meta.textContent = bits.join(" · ");
 
+  const warnings = document.createElement("div");
+  warnings.className = "warning";
+  warnings.style.display = "none";
+  if (song.lyrics_warnings && song.lyrics_warnings.length) {
+    warnings.textContent = song.lyrics_warnings.join(" ");
+    warnings.style.display = "block";
+  }
+
   const audio = document.createElement("audio");
   audio.controls = true;
   audio.preload = "metadata";
@@ -661,6 +691,7 @@ function addCard(song) {
       saved.textContent = "saved → " + result.path;
       saved.style.display = "block";
       save.textContent = "Saved";
+      loadLibrary();
     } catch (err) {
       showError("Save failed: " + err.message);
     }
@@ -703,11 +734,109 @@ function addCard(song) {
   };
 
   row.append(save, download, again, del);
-  body.append(title, meta, audio, row, saved);
+  body.append(title, meta, warnings, audio, row, saved);
   if (lyrics) body.append(lyrics);
   card.appendChild(body);
   gallery.prepend(card);
   updateEmpty();
+}
+
+function libraryWriter(song) {
+  const item = state.lyricists.find((entry) => entry.name === song.lyrics_writer);
+  return item ? item.label : (song.lyrics_writer || "lyricist");
+}
+
+function addLibraryCard(song) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.dataset.id = song.id;
+
+  const body = document.createElement("div");
+  body.className = "body";
+  const title = document.createElement("div");
+  title.className = "title";
+  title.textContent = song.title || song.filename;
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  const bits = [];
+  if (song.genre) bits.push(labelForGenre(song.genre));
+  if (song.duration) bits.push(formatDuration(song.duration));
+  if (song.lyrics_writer && song.lyrics_writer !== "user") {
+    bits.push(`lyrics: ${libraryWriter(song)}`);
+  }
+  const when = song.created ? new Date(song.created) : null;
+  if (when && !Number.isNaN(when.getTime())) {
+    bits.push(when.toLocaleDateString());
+  }
+  meta.textContent = bits.join(" · ") || "Saved song";
+
+  const warnings = document.createElement("div");
+  warnings.className = "warning";
+  warnings.style.display = "none";
+  if (song.lyrics_warnings && song.lyrics_warnings.length) {
+    warnings.textContent = song.lyrics_warnings.join(" ");
+    warnings.style.display = "block";
+  }
+
+  const audio = document.createElement("audio");
+  audio.controls = true;
+  audio.preload = "metadata";
+  audio.src = `/api/library/${encodeURIComponent(song.id)}` +
+    (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "");
+  audio.setAttribute("aria-label", title.textContent);
+
+  let lyrics = null;
+  if (song.lyrics && song.lyrics !== "[Instrumental]") {
+    lyrics = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = "Lyrics";
+    const pre = document.createElement("pre");
+    pre.textContent = song.lyrics;
+    lyrics.append(summary, pre);
+  }
+
+  const row = document.createElement("div");
+  row.className = "row";
+
+  const download = document.createElement("button");
+  download.type = "button";
+  download.textContent = "Download";
+  download.onclick = () => {
+    window.location.href = `/api/library/${encodeURIComponent(song.id)}?download=1` +
+      (TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : "");
+  };
+
+  const del = document.createElement("button");
+  del.type = "button";
+  del.textContent = "Delete";
+  del.onclick = async () => {
+    try {
+      await api(`/api/library/${encodeURIComponent(song.id)}`, { method: "DELETE" });
+    } catch (err) {
+      showError("Delete failed: " + err.message);
+      return;
+    }
+    card.remove();
+    if (!library.children.length) libraryEmpty.style.display = "";
+  };
+
+  row.append(download, del);
+  body.append(title, meta, warnings, audio, row);
+  if (lyrics) body.append(lyrics);
+  card.appendChild(body);
+  library.appendChild(card);
+  libraryEmpty.style.display = "none";
+}
+
+async function loadLibrary() {
+  try {
+    const { songs } = await api("/api/library");
+    library.textContent = "";
+    for (const song of songs) addLibraryCard(song);
+    libraryEmpty.style.display = songs.length ? "none" : "";
+  } catch (err) {
+    showError("Could not load the saved-song library: " + err.message);
+  }
 }
 
 async function pollJob(jobId, pending) {
@@ -828,6 +957,8 @@ async function previewLyrics() {
   lyricsPanel.hidden = false;
   lyricsProvider.textContent = `Writing lyrics with ${lyricistLabel()}…`;
   lyricsEdit.value = "";
+  lyricsWarning.style.display = "none";
+  lyricsWarning.textContent = "";
   try {
     const { job_id } = await api("/api/lyrics", {
       method: "POST",
@@ -846,6 +977,10 @@ async function previewLyrics() {
     lyricsProvider.textContent = result.model
       ? `${result.provider} · ${result.model}`
       : result.provider;
+    if (result.warnings && result.warnings.length) {
+      lyricsWarning.textContent = result.warnings.join(" ");
+      lyricsWarning.style.display = "block";
+    }
     lyricsEdit.focus();
   } catch (err) {
     showError(err.message);
@@ -916,6 +1051,14 @@ async function boot() {
     updateGoState();
   };
   pill.onclick = checkStatus;
+  $("refresh-library").onclick = loadLibrary;
+  $("reveal-library").onclick = async () => {
+    try {
+      await api("/api/library/reveal", { method: "POST" });
+    } catch (err) {
+      showError(err.message);
+    }
+  };
   $("help-btn").onclick = () => helpDialog.showModal();
   $("help-close").onclick = () => helpDialog.close();
   text.addEventListener("keydown", (event) => {
@@ -935,6 +1078,7 @@ async function boot() {
     renderGenres(config.genres || []);
     renderDurations(config.durations || [30, 45, 60]);
     if (config.auth && !config.desktop) lock.style.display = "";
+    if (config.desktop) $("reveal-library").style.display = "";
     setMode(config.default_mode || "topic");
   } catch (err) {
     showError(err.message);
@@ -948,6 +1092,7 @@ async function boot() {
 
   updateEmpty();
   checkStatus();
+  loadLibrary();
 }
 
 boot();

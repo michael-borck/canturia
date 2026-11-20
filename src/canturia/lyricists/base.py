@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 
@@ -27,6 +27,7 @@ class LyricResult:
     model: str | None = None
     caption: str | None = None
     error: str | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 class Lyricist(Protocol):

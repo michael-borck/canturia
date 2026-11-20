@@ -16,7 +16,7 @@ from canturia.lyricists.base import (
     LyricRequest,
     LyricResult,
 )
-from canturia.lyrics_text import clean_lyrics
+from canturia.lyrics_text import clean_lyrics, repetition_warnings
 from canturia.providers.acestep import AceStepClient, AceStepError
 
 
@@ -70,9 +70,11 @@ class AceStepLyricist:
         if not lyrics:
             raise LyricistError("ACE-Step returned no usable lyrics.")
         caption = data.get("caption")
+        warnings = repetition_warnings(lyrics)
         return LyricResult(
             lyrics=lyrics,
             provider=self.name,
             model="ACE-Step 5Hz LM",
             caption=str(caption) if caption else None,
+            warnings=warnings,
         )

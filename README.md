@@ -167,8 +167,12 @@ The page has **About a topic** and **Write lyrics** tabs, a lyricist selector,
 a **Preview lyrics** panel (edit before singing), a **Surprise me** button,
 genre chips, 30/45/60 s presets plus a custom field, style details, a **Help**
 sheet, and inline hints. Songs appear in a session gallery with an audio player,
-Save, Download, Again, and Delete. The gallery is in memory only; Save writes
-into `~/Music/Canturia` (or `serve.out_dir`).
+Save, Download, Again, and Delete. The session gallery is in memory only; Save
+writes into `~/Music/Canturia` (or `serve.out_dir`).
+
+Below it, **Saved songs** lists the files in that folder with play, download,
+lyrics, and delete actions. `canturia library` lists the same songs from the
+CLI, and the desktop app has an **Open folder** button.
 
 When `serve` binds beyond localhost without a password, it generates one and
 prints it. The upstream ACE-Step credentials are separate: use `api_key` for a
@@ -220,7 +224,7 @@ cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.3.2` from PyPI. For local Python
+The sidecar installs `canturia[serve]==0.3.3` from PyPI. For local Python
 changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
 instead.
 
@@ -250,7 +254,7 @@ uv run --no-sync pytest
 - **M1** — Python core, CLI, web UI (done).
 - **M2** — Tauri desktop shell with a Settings sheet for the server URL,
   credentials, and lyricist/BYOK, uv-bootstrapped sidecar, installers in CI
-  (done; PyPI 0.3.2).
+  (done; PyPI 0.3.3).
 - **M3** — Optional advanced controls, documented but hidden by default: BPM,
   key, time signature, instrumental, vocal language, LoRA selection.
 

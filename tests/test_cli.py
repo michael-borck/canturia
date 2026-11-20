@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -120,6 +121,25 @@ def test_lyrics_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(app, ["--lyrics-file", str(lyrics)])
     assert result.exit_code == 0
     assert captured["text"] == "[Verse]\nfrom a file"
+
+
+def test_library_command(tmp_path: Path) -> None:
+    audio = tmp_path / "saved.mp3"
+    audio.write_bytes(b"ID3saved")
+    audio.with_suffix(".mp3.json").write_text(
+        json.dumps(
+            {
+                "source_text": "a saved song",
+                "genre": "folk",
+                "duration": 30,
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["library", "--out-dir", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "a saved song" in result.output
+    assert "saved.mp3" in result.output
 
 
 def test_health_output(monkeypatch: pytest.MonkeyPatch) -> None:

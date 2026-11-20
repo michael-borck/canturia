@@ -64,6 +64,9 @@ A single page:
 - **Help** sheet and inline hints: what each mode does, where lyrics come from,
   what Surprise does, where files are saved, BYOK, and the cold-start
   expectation.
+- **Saved songs** library under the session gallery: scan the output folder and
+  its JSON sidecars; play, download, view lyrics, delete, and open the folder
+  in the desktop app.
 - Genre chips (folk, pop, rock, indie, lo-fi, electronic, hip-hop, soul,
   country, jazz, classical, ambient, metal, lullaby) plus optional free-text
   style details.
@@ -106,6 +109,10 @@ on the Mac App Store (runtime-download rules).
 | `ollama` | Local Ollama chat model; default `qwen3.5:4b`, auto-picked from `/api/tags` | None |
 | `openai-compatible` | Any `/v1/chat/completions` endpoint: OpenAI, LM Studio, llama.cpp, OpenRouter | Bearer key for cloud; optional locally |
 | `acestep` | ACE-Step's 5Hz LM via `/v1/create_sample`, for comparison only | Uses the ACE-Step server auth |
+
+ACE-Step lyric results are checked for repeated lines and a collapsed
+vocabulary. Warnings are attached to the result, shown in the CLI/UI, and saved
+in the sidecar; repetitive output is not silently treated as normal.
 
 By default, the topic path does **not** use ACE-Step's 5Hz LM to write lyrics.
 That model is a music planner: in testing it returned 144 s of Vietnamese and
@@ -290,7 +297,7 @@ tests/
 - Ollama runs locally. The OpenAI-compatible lyricist sends prompts only to the
   endpoint and key the user configures; keys are never exposed to the browser.
 - The web session gallery is in memory, capped at 50 songs, and dies with the
-  process.
+  process. The separate saved-song library is an explicit folder on disk.
 - Save writes the audio plus a `<song>.json` sidecar into
   `~/Music/Canturia` (configurable). Save never overwrites.
 - The only egress is the request to the configured ACE-Step server.
@@ -314,7 +321,9 @@ tests/
    server URL, credentials, and lyricist/BYOK, CI installers, landing page.
 3. **M3 — Lyricists and preview.** `lyricists/` providers, `canturia lyrics`,
    `canturia compare`, web Preview lyrics → edit → Sing, 0.3.2.
-4. **M4 — Optional depth.** Hidden/advanced controls: instrumental, vocal
+4. **M4 — Library and secrets.** Persistent saved-song library, ACE-Step
+   quality warnings, OS keychain storage in the desktop app, 0.3.3.
+5. **M5 — Optional depth.** Hidden/advanced controls: instrumental, vocal
    language, BPM, key, time signature, inference steps, LoRA selection. Same
    "simple by default" rule as Limn.
 

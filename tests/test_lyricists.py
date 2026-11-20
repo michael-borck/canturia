@@ -12,6 +12,7 @@ from canturia.lyricists import (
     OpenAICompatibleLyricist,
     build_lyricist,
 )
+from canturia.lyrics_text import repetition_warnings
 
 
 class FakeResponse:
@@ -108,6 +109,15 @@ def test_openai_compatible_reports_errors() -> None:
         lyricist.write(request())
 
 
+def test_repetition_warnings() -> None:
+    good = "[Verse]\nMorning light across the floor\n[Chorus]\nGrow a little every day"
+    assert repetition_warnings(good) == []
+    repeated = "\n".join(["[Verse]"] + ["I have blown a lot of wind"] * 8)
+    warnings = repetition_warnings(repeated)
+    assert warnings
+    assert any("Repeats" in warning or "repeat" in warning for warning in warnings)
+
+
 def test_acestep_lyricist_success_and_instrumental() -> None:
     class FakeAce:
         def __init__(self, lyrics: str) -> None:
@@ -132,6 +142,13 @@ def test_acestep_lyricist_success_and_instrumental() -> None:
     assert result.lyrics == "[Verse]\nACE words"
     assert result.provider == "acestep"
     assert result.caption == "a caption"
+    assert result.warnings == []
+
+    lyricist.client = FakeAce(  # type: ignore[assignment]
+        "\n".join(["[Verse]"] + ["I have blown a lot of wind"] * 8)
+    )
+    warned = lyricist.write(request())
+    assert warned.warnings
 
     lyricist.client = FakeAce("[Music Box Melody]\n\n[Instrumental]")  # type: ignore[assignment]
     with pytest.raises(LyricistError, match="Instrumental"):

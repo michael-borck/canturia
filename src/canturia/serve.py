@@ -21,7 +21,13 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from pydantic import BaseModel, Field
 
 from canturia import __version__
@@ -39,6 +45,13 @@ from canturia.core import (
     unique_path,
 )
 from canturia.core import lyrics as write_lyrics_only
+from canturia.library import (
+    LibraryError,
+    delete_song,
+    list_songs,
+    resolve_song,
+    reveal_folder,
+)
 from canturia.lyricists.base import LyricResult
 from canturia.providers import AceStepError, SongResult
 
@@ -75,6 +88,7 @@ class Song:
             "lyrics": self.song.lyrics,
             "lyricist": self.generation.lyricist,
             "lyricist_model": self.generation.lyricist_model,
+            "lyrics_warnings": self.generation.lyrics_warnings,
             "metas": self.song.metas,
             "created": self.created,
         }
@@ -449,6 +463,7 @@ def create_app(
                     "model": result.model,
                     "caption": result.caption,
                     "error": result.error,
+                    "warnings": result.warnings,
                 }
                 job.status = "done"
                 job.progress = "done"
@@ -576,6 +591,44 @@ def create_app(
     @app.post("/api/generate", dependencies=[Depends(require_auth)])
     def api_generate(payload: GeneratePayload) -> dict[str, Any]:
         return {"job_id": start_job(payload)}
+
+    @app.get("/api/library", dependencies=[Depends(require_auth)])
+    def api_library() -> dict[str, Any]:
+        return {"songs": list_songs(save_dir)}
+
+    @app.post("/api/library/reveal", dependencies=[Depends(require_auth)])
+    def api_library_reveal() -> dict[str, Any]:
+        if not desktop:
+            raise HTTPException(
+                status_code=403,
+                detail="Only the desktop app can open the library folder",
+            )
+        reveal_folder(save_dir)
+        return {"path": str(save_dir)}
+
+    @app.get("/api/library/{song_id}", dependencies=[Depends(require_auth)])
+    def api_library_song(song_id: str, download: bool = False) -> Response:
+        try:
+            path = resolve_song(save_dir, song_id)
+        except LibraryError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        extension = path.suffix.lower()
+        return FileResponse(
+            path,
+            media_type=MEDIA_TYPES.get(extension, "audio/mpeg"),
+            filename=path.name,
+            content_disposition_type="attachment" if download else "inline",
+        )
+
+    @app.delete(
+        "/api/library/{song_id}", dependencies=[Depends(require_auth)]
+    )
+    def api_library_delete(song_id: str) -> dict[str, Any]:
+        try:
+            path = delete_song(save_dir, song_id)
+        except LibraryError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"deleted": path.name}
 
     @app.get("/api/jobs/{job_id}", dependencies=[Depends(require_auth)])
     def api_job(job_id: str) -> dict[str, Any]:

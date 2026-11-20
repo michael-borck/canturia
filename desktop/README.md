@@ -12,9 +12,11 @@ the installer stays small: no bundled browser engine, no 1 GB Python bundle.
    (killed on exit) and shows the web UI in the window.
 3. **Settings** (shown on first run, and from the header) is the BYO-server
    screen: server URL, optional Bearer token, optional Basic username/password,
-   and the lyricist choice (Ollama, OpenAI-compatible BYOK, or ACE-Step LM) →
-   written to `~/.canturia.yaml` (chmod 600), the same config the CLI uses.
-   Saves land in `Music/Canturia`.
+   and the lyricist choice (Ollama, OpenAI-compatible BYOK, or ACE-Step LM).
+   Secrets (ACE bearer/Basic and the OpenAI-compatible key) go to the macOS
+   Keychain or Windows Credential Manager; non-secret settings go to
+   `~/.canturia.yaml` (chmod 600), the same config the CLI uses. Saves land in
+   `Music/Canturia`.
 
 Privacy: no account, no telemetry, no bundled cloud — the only egress is the
 generation request to the server the user configures.

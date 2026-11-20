@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -65,6 +65,7 @@ class Generation:
     request: SongRequest
     lyricist: str | None = None
     lyricist_model: str | None = None
+    lyrics_warnings: list[str] = field(default_factory=list)
 
 
 def genre_options() -> list[dict[str, str]]:
@@ -319,6 +320,7 @@ def generate(
         )
         writer_name = written.provider
         writer_model = written.model
+        warnings = list(written.warnings)
         request = build_request(
             "lyrics",
             written.lyrics,
@@ -331,6 +333,7 @@ def generate(
         )
     else:
         writer_name = "user" if mode == "lyrics" else "acestep"
+        warnings = []
         if mode == "describe":
             writer_model = "ACE-Step 5Hz LM"
         request = build_request(
@@ -357,6 +360,7 @@ def generate(
         request=request,
         lyricist=writer_name,
         lyricist_model=writer_model,
+        lyrics_warnings=warnings,
     )
 
 
@@ -408,6 +412,7 @@ def metadata_for(generation: Generation, song: SongResult) -> dict[str, Any]:
         "lyrics_writer": generation.lyricist
         or writers.get(generation.mode, "unknown"),
         "lyricist_model": generation.lyricist_model,
+        "lyrics_warnings": generation.lyrics_warnings,
         "genre": generation.genre,
         "style": generation.style,
         "prompt": song.prompt,

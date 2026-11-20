@@ -103,6 +103,7 @@
 
           <label for="password">Basic password</label>
           <input id="password" type="password" placeholder="with the username above">
+          <p class="note">The bearer token and Basic password are stored in the OS keychain on macOS/Windows.</p>
 
           <h2 class="section-title">Lyricist</h2>
           <label for="lyricist">Who writes the lyrics?</label>
@@ -211,7 +212,7 @@ function syncLyricistFields() {
       "Ollama runs locally and needs no key. Pull a model first, e.g. ollama pull qwen3.5:4b.";
   } else if (choice === "openai-compatible") {
     $("lyricist-note").textContent =
-      "Bring your own key. It is saved to ~/.canturia.yaml (chmod 600) and sent only to the endpoint above.";
+      "Bring your own key. It is stored in the OS keychain on macOS/Windows and sent only to the endpoint above.";
   } else {
     $("lyricist-note").textContent =
       "ACE-Step's own LM, for comparison only. It is experimental and often returns [Instrumental].";

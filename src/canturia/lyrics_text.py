@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 
 from canturia.languages import language_name
 
@@ -40,6 +41,39 @@ def build_user_prompt(
         "Include at least one [Verse] and one [Chorus]. "
         "Do not reuse existing songs. Return only the lyrics."
     )
+
+
+def repetition_warnings(lyrics: str) -> list[str]:
+    """Flag obvious lyric degeneration (repeated lines or a tiny vocabulary)."""
+    lines = [
+        re.sub(r"\s+", " ", line.strip().lower())
+        for line in (lyrics or "").splitlines()
+        if line.strip() and not _TAG_RE.match(line)
+    ]
+    warnings: list[str] = []
+    if len(lines) >= 8:
+        unique_lines = len(set(lines)) / len(lines)
+        if unique_lines < 0.6:
+            warnings.append(
+                f"Repeated lines: only {unique_lines:.0%} of the lyric lines "
+                "are different."
+            )
+    repeated = [
+        line
+        for line, count in Counter(lines).items()
+        if count >= 3 and len(line.split()) > 2
+    ]
+    if repeated:
+        warnings.append("At least one line repeats three or more times.")
+    words = re.findall(r"[a-z']+", " ".join(lines))
+    if len(words) >= 30:
+        unique_words = len(set(words)) / len(words)
+        if unique_words < 0.35:
+            warnings.append(
+                f"Small vocabulary: only {unique_words:.0%} of the words are "
+                "different."
+            )
+    return warnings
 
 
 def clean_lyrics(text: str) -> str:
