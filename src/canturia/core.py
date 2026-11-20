@@ -69,8 +69,11 @@ class Generation:
 
 
 def genre_options() -> list[dict[str, str]]:
-    """Genre choices for the web UI and docs."""
-    return [{"key": key, "label": label} for key, (label, _) in GENRES.items()]
+    """Genre presets for the web UI and docs."""
+    return [
+        {"key": key, "label": label, "prompt": prompt}
+        for key, (label, prompt) in GENRES.items()
+    ]
 
 
 def genre_prompt(genre: str, style: str | None = None) -> str:
@@ -133,6 +136,8 @@ def build_request(
     source = (text or "").strip()
     if not source and not instrumental:
         raise ValueError("Give me lyrics, or a topic with 'topic'.")
+    if not (genre or "").strip():
+        raise ValueError("Pick a genre, or type your own genre.")
     seconds = validate_duration(duration)
     prompt = genre_prompt(genre, style)
     advanced = {

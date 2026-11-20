@@ -157,9 +157,14 @@ canturia serve
 Every saved song gets a `<song>.json` sidecar with the mode, lyrics writer,
 genre, style, prompt, lyrics, duration, vocal language, and server metadata.
 
-## Optional depth
+## Genre and Options
 
-The main screen stays simple; an **Options** disclosure adds:
+Genre chips are presets; you can also type your own genre. A genre is always
+required. The **Options** disclosure is a set of tweaks to that genre — it does
+not replace it. Its request summary shows the exact base prompt, your style
+details, and the parameters that will be sent.
+
+Options adds:
 
 - Instrumental (skips lyrics)
 - Vocal language
@@ -250,7 +255,7 @@ cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.4.0` from PyPI. For local Python
+The sidecar installs `canturia[serve]==0.4.1` from PyPI. For local Python
 changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
 instead.
 
@@ -280,7 +285,7 @@ uv run --no-sync pytest
 - **M1** — Python core, CLI, web UI (done).
 - **M2** — Tauri desktop shell with a Settings sheet for the server URL,
   credentials, and lyricist/BYOK, uv-bootstrapped sidecar, installers in CI
-  (done; PyPI 0.4.0).
+  (done; PyPI 0.4.1).
 - **M3** — Optional advanced controls, documented but hidden by default: BPM,
   key, time signature, instrumental, vocal language, LoRA selection.
 

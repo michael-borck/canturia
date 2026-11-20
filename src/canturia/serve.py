@@ -114,7 +114,7 @@ class Job:
 class GeneratePayload(BaseModel):
     mode: Literal["topic", "lyrics", "describe"] = "topic"
     text: str = Field(min_length=1)
-    genre: str = "folk"
+    genre: str = Field(default="folk", min_length=1)
     style: str | None = None
     duration: float = Field(default=30, ge=10, le=600)
     lyricist: str | None = None
@@ -131,7 +131,7 @@ class GeneratePayload(BaseModel):
 
 class LyricsPayload(BaseModel):
     topic: str = Field(min_length=1)
-    genre: str = "folk"
+    genre: str = Field(default="folk", min_length=1)
     style: str | None = None
     duration: float = Field(default=30, ge=10, le=600)
     lyricist: str | None = None

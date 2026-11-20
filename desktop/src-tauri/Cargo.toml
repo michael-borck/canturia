@@ -1,6 +1,6 @@
 [package]
 name = "canturia-desktop"
-version = "0.4.0"
+version = "0.4.1"
 description = "Canturía — words into a song, on your desktop"
 authors = ["Michael Borck <michael.borck@curtin.edu.au>"]
 license = "MIT"

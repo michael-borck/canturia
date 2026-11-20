@@ -83,7 +83,12 @@
   }
   .control { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
   .control > label { font-size: .78rem; color: var(--muted); width: 4.2rem; }
-  .chips { display: flex; gap: .35rem; flex-wrap: wrap; }
+  .chips { display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
+  .custom-genre {
+    font: inherit; font-size: .78rem; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: .22rem .65rem; width: 13rem;
+  }
   .chip {
     font: inherit; font-size: .78rem; color: var(--muted);
     background: var(--bg); border: 1px solid var(--line);
@@ -100,6 +105,13 @@
     flex: 1; font: inherit; font-size: .86rem; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 7px; padding: .35rem .55rem;
   }
+  .request-summary {
+    display: grid; gap: .2rem; background: var(--bg);
+    border: 1px dashed var(--line); border-radius: 8px;
+    padding: .55rem .7rem; font-size: .76rem; color: var(--muted);
+  }
+  .request-summary strong { color: var(--ink); font-weight: 600; }
+  .request-summary .summary-line { line-height: 1.35; }
   .advanced { margin-top: .2rem; }
   .advanced > summary {
     cursor: pointer; color: var(--muted); font-size: .82rem;
@@ -283,6 +295,7 @@
       <div class="control">
         <label>Genre</label>
         <div class="chips" id="genres"></div>
+        <input id="custom-genre" class="custom-genre" placeholder="or type your own genre">
       </div>
       <div class="control">
         <label>Lyricist</label>
@@ -305,7 +318,9 @@
         </div>
       </div>
       <details class="advanced">
-        <summary>Options</summary>
+        <summary>Options · tweaks to the genre</summary>
+        <div class="request-summary" id="request-summary"></div>
+        <p class="hint-line" style="margin:.4rem 0 .2rem">These are tweaks to the selected genre. The genre remains the base style; every request needs one.</p>
         <div class="advanced-grid">
           <label class="check"><input id="instrumental" type="checkbox"> Instrumental · no lyrics</label>
           <label>Vocal language<select id="language"></select></label>
@@ -379,7 +394,11 @@
     <p>Type a theme or a sentence. Canturía asks the chosen lyricist to write
     the lyrics, then sends them to ACE-Step with your genre, length, and English
     vocals. The length is honoured exactly.</p>
-    <h3>Options</h3>
+    <h3>Genre and Options</h3>
+    <p>Genre chips are presets; you can also type your own genre. A genre is
+    always required. Options are tweaks to that genre — the summary at the top
+    of Options shows the final style prompt and the parameters that will be
+    sent.</p>
     <p>Instrumental skips lyrics. Vocal language, BPM, key, time signature, seed,
     model, steps, and guidance are sent to ACE-Step for this request. LoRA is
     server-side: load an adapter path, then use, bypass, scale, or unload it.</p>
@@ -437,6 +456,7 @@ const bpmInput = $("bpm"), keyInput = $("key"), seedInput = $("seed");
 const modelSelect = $("model"), stepsInput = $("steps"), guidanceInput = $("guidance");
 const loraStatus = $("lora-status"), loraPath = $("lora-path"), loraName = $("lora-name");
 const loraScale = $("lora-scale"), loraToggle = $("lora-toggle");
+const customGenre = $("custom-genre"), requestSummary = $("request-summary");
 const singBtn = $("sing"), lyricsClose = $("lyrics-close");
 
 const SURPRISE_PROMPTS = [
@@ -449,6 +469,7 @@ const SURPRISE_PROMPTS = [
 const state = {
   mode: "topic",
   genre: "folk",
+  genrePreset: "folk",
   duration: 30,
   config: null,
   ace: null,
@@ -500,6 +521,75 @@ function labelForGenre(key) {
   const found = (state.config?.genres || []).find((g) => g.key === key);
   if (found) return found.label;
   return key ? key.charAt(0).toUpperCase() + key.slice(1) : "Song";
+}
+
+function selectedGenre() {
+  const custom = customGenre.value.trim();
+  if (custom) {
+    return { label: custom, prompt: custom, value: custom, custom: true };
+  }
+  const found = (state.config?.genres || []).find(
+    (genre) => genre.key === state.genre
+  );
+  if (found) {
+    return {
+      label: found.label,
+      prompt: found.prompt || found.label,
+      value: found.key,
+      custom: false,
+    };
+  }
+  return {
+    label: state.genre || "",
+    prompt: state.genre || "",
+    value: state.genre || "",
+    custom: false,
+  };
+}
+
+function updateRequestSummary() {
+  const genre = selectedGenre();
+  const style = styleInput.value.trim();
+  const advanced = advancedPayload();
+  const parts = [];
+  if (advanced.instrumental) parts.push("instrumental");
+  if (advanced.bpm) parts.push(`${advanced.bpm} BPM`);
+  if (advanced.key_scale) parts.push(advanced.key_scale);
+  if (advanced.time_signature) parts.push(advanced.time_signature);
+  if (advanced.seed !== null) parts.push(`seed ${advanced.seed}`);
+  if (advanced.model) parts.push(advanced.model);
+  if (advanced.inference_steps) parts.push(`${advanced.inference_steps} steps`);
+  if (advanced.guidance_scale !== null) {
+    parts.push(`guidance ${advanced.guidance_scale}`);
+  }
+  const language = languageSelect.selectedOptions[0]?.textContent || "English";
+  if (language) parts.push(language);
+  if (state.lora?.lora_loaded && state.lora.use_lora) {
+    parts.push(`LoRA ${state.lora.lora_scale ?? 1}`);
+  }
+
+  const lines = [];
+  const add = (label, value) => {
+    const line = document.createElement("div");
+    line.className = "summary-line";
+    const strong = document.createElement("strong");
+    strong.textContent = `${label}: `;
+    line.append(strong, document.createTextNode(value));
+    lines.push(line);
+  };
+  if (!genre.label) {
+    add("Genre", "pick a genre or type your own before generating");
+  } else {
+    add("Genre", genre.label);
+    add("Base style prompt", genre.prompt || genre.label);
+    if (style) add("Your style details", style);
+    add(
+      "This request",
+      `${genre.label} + your tweaks · ${durationInput.value || 30}s` +
+      (parts.length ? ` · ${parts.join(" · ")}` : " · no extra options")
+    );
+  }
+  requestSummary.replaceChildren(...lines);
 }
 
 function formatDuration(seconds) {
@@ -619,6 +709,7 @@ async function loadLoraStatus() {
   } catch (err) {
     loraStatus.textContent = "status unavailable";
   }
+  updateRequestSummary();
 }
 
 async function loraAction(path, body, label) {
@@ -632,6 +723,10 @@ async function loraAction(path, body, label) {
 
 function updateNotice() {
   const instrumental = instrumentalInput.checked;
+  if (!selectedGenre().label) {
+    showNotice("Pick a genre chip or type your own genre before generating.");
+    return;
+  }
   if (
     state.mode === "topic" && !instrumental && state.checked &&
     !lyricistAvailable()
@@ -650,20 +745,24 @@ function updateNotice() {
 
 function updateGoState() {
   const instrumental = instrumentalInput.checked;
+  const genreMissing = !selectedGenre().label;
   const topicUnavailable =
     state.checked && state.mode === "topic" && !instrumental &&
     !lyricistAvailable();
   go.disabled =
-    state.busy || topicUnavailable || (state.checked && state.aceOk === false);
+    state.busy || genreMissing || topicUnavailable ||
+    (state.checked && state.aceOk === false);
   go.textContent = state.busy ? "Composing…" : "Generate";
   previewBtn.disabled =
-    state.busy || state.mode !== "topic" || topicUnavailable || instrumental;
+    state.busy || genreMissing || state.mode !== "topic" ||
+    topicUnavailable || instrumental;
   surprise.disabled =
-    state.busy || state.aceOk === false || state.llm === false;
+    state.busy || genreMissing || state.aceOk === false || state.llm === false;
   singBtn.disabled =
-    state.busy || state.aceOk === false || instrumental;
+    state.busy || genreMissing || state.aceOk === false || instrumental;
   lyricistSelect.disabled =
     state.mode !== "topic" || instrumental || state.busy;
+  updateRequestSummary();
 }
 
 function setMode(mode) {
@@ -699,12 +798,26 @@ function renderGenres(genres) {
     button.dataset.genre = genre.key;
     button.onclick = () => {
       state.genre = genre.key;
+      state.genrePreset = genre.key;
+      customGenre.value = "";
       for (const chip of box.children) {
         chip.classList.toggle("active", chip.dataset.genre === genre.key);
       }
+      updateRequestSummary();
+      updateNotice();
+      updateGoState();
     };
-    if (genre.key === state.genre) button.classList.add("active");
+    if (!customGenre.value.trim() && genre.key === state.genre) {
+      button.classList.add("active");
+    }
     box.appendChild(button);
+  }
+  if (
+    customGenre.value.trim() === "" &&
+    state.genre &&
+    !genres.some((genre) => genre.key === state.genre)
+  ) {
+    customGenre.value = state.genre;
   }
 }
 
@@ -1090,6 +1203,10 @@ async function generate(modeOverride) {
     text.value = source;
   }
   if (!source) { text.focus(); return; }
+  if (!selectedGenre().value) {
+    showError("Pick a genre chip or type your own genre before generating.");
+    return;
+  }
   if (mode === "topic" && !instrumentalInput.checked && !lyricistAvailable()) {
     showError("Choose an available lyricist, or use Write lyrics.");
     return;
@@ -1110,7 +1227,7 @@ async function generate(modeOverride) {
     await submitGeneration({
       mode,
       text: source,
-      genre: state.genre || "folk",
+      genre: selectedGenre().value,
       style: styleInput.value.trim(),
       duration,
       lyricist: state.lyricist,
@@ -1153,6 +1270,10 @@ async function previewLyrics() {
   }
   const source = text.value.trim();
   if (!source) { text.focus(); return; }
+  if (!selectedGenre().value) {
+    showError("Pick a genre chip or type your own genre before generating.");
+    return;
+  }
   const duration = Number(durationInput.value);
   if (!Number.isFinite(duration) || duration < 10 || duration > 600) {
     showError("Length must be between 10 and 600 seconds.");
@@ -1172,10 +1293,11 @@ async function previewLyrics() {
       method: "POST",
       body: JSON.stringify({
         topic: source,
-        genre: state.genre || "folk",
+        genre: selectedGenre().value,
         style: styleInput.value.trim(),
         duration,
         lyricist: state.lyricist,
+        vocal_language: languageSelect.value || null,
       }),
     });
     const result = await pollLyricsJob(job_id, (progress) => {
@@ -1203,6 +1325,10 @@ async function singPreview() {
   clearError();
   const lyrics = lyricsEdit.value.trim();
   if (!lyrics) { lyricsEdit.focus(); return; }
+  if (!selectedGenre().value) {
+    showError("Pick a genre chip or type your own genre before generating.");
+    return;
+  }
   const duration = Number(durationInput.value);
   if (!Number.isFinite(duration) || duration < 10 || duration > 600) {
     showError("Length must be between 10 and 600 seconds.");
@@ -1216,7 +1342,7 @@ async function singPreview() {
     await submitGeneration({
       mode: "lyrics",
       text: lyrics,
-      genre: state.genre || "folk",
+      genre: selectedGenre().value,
       style: styleInput.value.trim(),
       duration,
       ...advancedPayload(),
@@ -1244,6 +1370,32 @@ async function boot() {
     };
   });
   durationInput.oninput = () => setDuration(durationInput.value);
+  styleInput.oninput = updateRequestSummary;
+  customGenre.oninput = () => {
+    const custom = customGenre.value.trim();
+    if (custom) {
+      state.genre = custom;
+      for (const chip of $("genres").children) {
+        chip.classList.remove("active");
+      }
+    } else {
+      state.genre = state.genrePreset || "folk";
+      for (const chip of $("genres").children) {
+        chip.classList.toggle(
+          "active", chip.dataset.genre === state.genre
+        );
+      }
+    }
+    updateRequestSummary();
+    updateNotice();
+    updateGoState();
+  };
+  for (const id of ["bpm", "key", "seed", "steps", "guidance"]) {
+    $(id).addEventListener("input", updateRequestSummary);
+  }
+  for (const element of [languageSelect, timeSignatureSelect, modelSelect]) {
+    element.addEventListener("change", updateRequestSummary);
+  }
   instrumentalInput.onchange = () => {
     if (instrumentalInput.checked) lyricsPanel.hidden = true;
     if (state.mode === "topic") {
@@ -1322,6 +1474,7 @@ async function boot() {
     const config = await api("/api/config");
     state.config = config;
     state.genre = config.genre || "folk";
+    state.genrePreset = state.genre;
     state.duration = Number(config.duration) || 30;
     state.lyricist = config.lyricist || "ollama";
     if (config.style) styleInput.value = config.style;
@@ -1332,6 +1485,7 @@ async function boot() {
     if (config.auth && !config.desktop) lock.style.display = "";
     if (config.desktop) $("reveal-library").style.display = "";
     setMode(config.default_mode || "topic");
+    updateRequestSummary();
   } catch (err) {
     showError(err.message);
     setMode("topic");

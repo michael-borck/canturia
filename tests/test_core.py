@@ -110,6 +110,10 @@ def test_build_request_rejects_empty_and_bad_mode() -> None:
         build_request("lyrics", "   ", "folk")
     with pytest.raises(ValueError):
         build_request("sing", "words", "folk")
+    with pytest.raises(ValueError, match="genre"):
+        build_request("lyrics", "words", "   ")
+    custom = build_request("lyrics", "words", "vaporwave")
+    assert custom.prompt == "vaporwave"
 
 
 def test_slugify() -> None:

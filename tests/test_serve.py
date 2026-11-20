@@ -482,6 +482,17 @@ def test_describe_job_and_invalid_duration(tmp_path: Path) -> None:
         )
         assert bad.status_code == 422
 
+        no_genre = client.post(
+            "/api/generate",
+            json={
+                "mode": "lyrics",
+                "text": "words",
+                "genre": "",
+                "duration": 30,
+            },
+        )
+        assert no_genre.status_code == 422
+
 
 def test_save_without_filename_uses_out_dir(tmp_path: Path) -> None:
     with TestClient(make_app(tmp_path)) as client:

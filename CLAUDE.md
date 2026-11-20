@@ -10,7 +10,7 @@ a genre and a length, and get an MP3 from an ACE-Step 1.5 server you point it
 at. Same shape as Limn: Python core + Typer CLI + FastAPI single page + Tauri v2
 shell. PyPI package and CLI: `canturia`.
 
-## Status (0.4.0)
+## Status (0.4.1)
 
 - Python core, ACE-Step client, lyricist providers, CLI, web UI, Help sheet,
   password gate, saved-song library, tests — done.
@@ -31,7 +31,7 @@ shell. PyPI package and CLI: `canturia`.
   backfill, Surprise, and the ACE-Step lyricist available.
 - Tauri shell, icons, `cargo check`, CI workflows, lyricist/BYOK Settings,
   OS-keychain secrets, the saved-song library, and the Options panel — in the
-  repo. **v0.4.0 desktop release is signed/notarized via the shared app-hq
+  repo. **v0.4.1 desktop release is signed/notarized via the shared app-hq
   workflow** (macOS arm64 + Intel, Windows, Linux) and adds stable ASCII asset
   aliases for the landing page.
 - Landing page in `landing/` (platform detection, direct stable download
@@ -122,7 +122,10 @@ uv run --no-sync canturia "[Verse]\nMorning light" -g folk -t 10 -o /tmp/x.mp3 \
   `describe` (raw ACE-Step, labelled "Surprise me").
 - Lyricists: `ollama` (default), `openai-compatible` (BYOK), `acestep`
   (experimental). Preview/edit before singing.
-- Genre chips + free-text style; length presets 30/45/60 + custom 10–600 s.
+- Genre chips are presets; custom genre text is allowed. A genre is required.
+  Options are tweaks to the selected genre, with a request summary showing the
+  final prompt and parameters. Style details are appended to the genre.
+- Length presets 30/45/60 + custom 10–600 s.
 - Session gallery in memory; Save to `~/Music/Canturia` + JSON sidecar;
   Download/Again/Delete. A separate saved-song library scans that folder and
   supports play/download/lyrics/delete.

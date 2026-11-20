@@ -61,6 +61,8 @@ A single page:
   (experimental), with availability and model shown.
 - **Preview lyrics**: write the words first, edit them, then **Sing these
   lyrics** with an exact duration. This is the comparison workflow.
+- **Options** is explicitly "tweaks to the genre"; its request summary shows
+  the base prompt, style details, and every parameter that will be sent.
 - **Help** sheet and inline hints: what each mode does, where lyrics come from,
   what Surprise does, where files are saved, BYOK, and the cold-start
   expectation.
@@ -68,8 +70,9 @@ A single page:
   its JSON sidecars; play, download, view lyrics, delete, and open the folder
   in the desktop app.
 - Genre chips (folk, pop, rock, indie, lo-fi, electronic, hip-hop, soul,
-  country, jazz, classical, ambient, metal, lullaby) plus optional free-text
-  style details.
+  country, jazz, classical, ambient, metal, lullaby) plus a free-text custom
+  genre. A genre is required; there is no "none". The chips are presets for the
+  base style prompt, not shortcuts that replace the advanced options.
 - Length presets 30/45/60 s plus a custom 10–600 s field.
 - Generate → a pending card with live progress (Ollama writing, then ACE-Step
   generating) → an audio card.
@@ -99,8 +102,9 @@ on the Mac App Store (runtime-download rules).
 | `lyrics` | Lyrics with `[Verse]` / `[Chorus]` tags | Same ACE-Step path; words pass through | Yes |
 | `describe` | Topic / sentence | ACE-Step `sample_mode: true` + `sample_query` with an appended English + length hint | No — experimental |
 
-`prompt` is built from the genre preset plus optional style details, e.g.
-`gentle acoustic folk, warm vocals, fingerpicked guitar, close mic`.
+`prompt` is built from the selected genre (preset or custom text) plus optional
+style details, e.g. `gentle acoustic folk, warm vocals, fingerpicked guitar,
+close mic`. Every request requires a non-empty genre.
 
 ### Lyricists
 
@@ -325,7 +329,7 @@ tests/
    quality warnings, OS keychain storage in the desktop app, 0.3.3.
 5. **M5 — Optional depth.** Instrumental, vocal language, BPM, key, time
    signature, seed, model, inference steps, guidance, and server-side LoRA,
-   under an Options disclosure, 0.4.0.
+   under an Options disclosure, 0.4.1.
 
 ## 12. Advanced controls (Options)
 
