@@ -330,6 +330,9 @@ tests/
 5. **M5 — Optional depth.** Instrumental, vocal language, BPM, key, time
    signature, seed, model, inference steps, guidance, and server-side LoRA,
    under an Options disclosure, 0.4.1.
+6. **M6 — Release polish.** Tauri auto-updater, Windows signing, custom domain
+   and metadata refresh for the landing page, and an automated desktop/browser
+   smoke test in CI.
 
 ## 12. Advanced controls (Options)
 

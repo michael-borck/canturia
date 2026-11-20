@@ -1,7 +1,7 @@
 {
   "name": "canturia-desktop",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Canturía Tauri shell",
   "scripts": {
     "tauri": "tauri",

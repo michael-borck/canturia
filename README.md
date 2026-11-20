@@ -255,9 +255,15 @@ cargo install tauri-cli --locked
 cd desktop && cargo tauri dev
 ```
 
-The sidecar installs `canturia[serve]==0.4.1` from PyPI. For local Python
+The sidecar installs `canturia[serve]==0.4.2` from PyPI. For local Python
 changes, set `CANTURIA_DEV_PATH="$PWD"` to install the repo in editable mode
 instead.
+
+## Troubleshooting
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for the password page,
+ACE-Step/Ollama outages, slow first runs, LoRA paths, the saved-song folder,
+macOS/Windows launch warnings, and updating.
 
 ## Why Python, and why Tauri
 
@@ -285,7 +291,7 @@ uv run --no-sync pytest
 - **M1** — Python core, CLI, web UI (done).
 - **M2** — Tauri desktop shell with a Settings sheet for the server URL,
   credentials, and lyricist/BYOK, uv-bootstrapped sidecar, installers in CI
-  (done; PyPI 0.4.1).
+  (done; PyPI 0.4.2).
 - **M3** — Optional advanced controls, documented but hidden by default: BPM,
   key, time signature, instrumental, vocal language, LoRA selection.
 

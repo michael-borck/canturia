@@ -247,7 +247,8 @@
     border: 0; cursor: pointer; text-decoration: underline;
   }
   dialog {
-    width: min(620px, 92vw); border: 1px solid var(--line);
+    width: min(620px, 92vw); max-height: 85vh; overflow: auto;
+    border: 1px solid var(--line);
     border-radius: 14px; background: var(--panel); color: var(--ink);
     padding: 1.3rem 1.4rem; box-shadow: 0 20px 60px rgba(0,0,0,.25);
   }
@@ -392,8 +393,8 @@
     <h2>How Canturía works</h2>
     <h3>About a topic</h3>
     <p>Type a theme or a sentence. Canturía asks the chosen lyricist to write
-    the lyrics, then sends them to ACE-Step with your genre, length, and English
-    vocals. The length is honoured exactly.</p>
+    the lyrics, then sends them to ACE-Step with your genre, length, and the
+    selected vocal language. The length is honoured exactly.</p>
     <h3>Genre and Options</h3>
     <p>Genre chips are presets; you can also type your own genre. A genre is
     always required. Options are tweaks to that genre — the summary at the top
@@ -409,26 +410,45 @@
     <h3>Lyricists</h3>
     <p><strong>Ollama</strong> runs locally. <strong>OpenAI-compatible</strong>
     is bring-your-own-key: OpenAI, LM Studio, llama.cpp, OpenRouter, and other
-    <code>/v1/chat/completions</code> endpoints. Keys live in
-    <code>~/.canturia.yaml</code> and are only sent to the endpoint you
-    configure. <strong>ACE-Step LM</strong> is experimental and often returns
-    <code>[Instrumental]</code>; use it for comparison, not as the default.</p>
+    <code>/v1/chat/completions</code> endpoints. In the desktop app, keys are
+    stored in the macOS Keychain or Windows Credential Manager; the CLI and
+    Linux use <code>~/.canturia.yaml</code> or environment variables. Keys are
+    only sent to the endpoint you configure. <strong>ACE-Step LM</strong> is
+    experimental and often returns <code>[Instrumental]</code> or repeated
+    lines; use it for comparison, not as the default.</p>
     <h3>Write lyrics</h3>
     <p>Paste your own words. <code>[Verse]</code> and <code>[Chorus]</code> tags
     help the singer. Your lyrics go straight to ACE-Step; length is honoured
     exactly.</p>
     <h3>Surprise me</h3>
     <p>ACE-Step invents the lyrics itself from your words. Canturía adds
-    &ldquo;with lyrics in English&rdquo; to the prompt, because that is the only
-    lever that moved the language in testing. Even then, length and language are
-    best-effort, and the result may wander. Use it when you want a happy
-    accident.</p>
+    &ldquo;with lyrics in the selected language&rdquo; to the prompt, because
+    putting the language in the words is the only lever that moved it in
+    testing. Even then, length and language are best-effort, and the result may
+    wander. Use it when you want a happy accident.</p>
     <h3>Nothing leaves your box</h3>
     <p>Ollama runs locally; ACE-Step is the server you configured. There is no
     account, no telemetry, and no hosted service.</p>
-    <h3>Saving</h3>
+    <h3>Saving and the library</h3>
     <p>The session gallery is in memory. Save writes the MP3 and a JSON sidecar
-    to <code>~/Music/Canturia</code> (or the server's configured folder).</p>
+    to <code>~/Music/Canturia</code> (or the server's configured folder). The
+    <strong>Saved songs</strong> section lists that folder: play, download, view
+    lyrics, delete, and — in the desktop app — open the folder.</p>
+    <h3>Troubleshooting</h3>
+    <p><strong>A password page:</strong> update to 0.4.2 or later; the desktop
+    app uses a per-launch token and should not show it.</p>
+    <p><strong>ACE-Step offline:</strong> check the server URL and that the API
+    is running, then click the status pill to recheck.</p>
+    <p><strong>Lyricist unavailable:</strong> start Ollama and pull a model, or
+    configure the OpenAI-compatible URL/model/key. Write lyrics still works
+    without a lyricist.</p>
+    <p><strong>Surprise / ACE-Step LM:</strong> the server needs
+    <code>resident: true</code> for its own LM. The result is experimental.</p>
+    <p><strong>First generation is slow:</strong> the first cold ACE-Step
+    request can load minutes of weights. Later requests are fast.</p>
+    <h3>Updating</h3>
+    <p>There is no desktop auto-updater yet. Download the latest build from the
+    landing page and replace the app; the private runtime updates on launch.</p>
     <h3>First generation</h3>
     <p>The first cold ACE-Step request can take minutes while model weights
     load. Later requests are much faster.</p>
