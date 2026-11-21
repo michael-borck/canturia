@@ -1,5 +1,9 @@
 # Canturía
 
+<p align="center">
+  <img src="landing/assets/canturia.png" alt="Canturía" width="640">
+</p>
+
 **Words into a song, rendered by your own ACE-Step server.**
 
 Canturía is a small, privacy-first text-to-song tool. Type what the song is
